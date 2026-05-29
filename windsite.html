@@ -1,0 +1,2105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>WindSite — Urban Wind Turbine Feasibility</title>
+<script type="importmap">
+{
+  "imports": {
+    "@deck.gl/core":       "https://esm.sh/@deck.gl/core@9.0.0",
+    "@deck.gl/layers":     "https://esm.sh/@deck.gl/layers@9.0.0?deps=@deck.gl/core@9.0.0",
+    "@deck.gl/geo-layers": "https://esm.sh/@deck.gl/geo-layers@9.0.0?deps=@deck.gl/core@9.0.0",
+    "@deck.gl/mapbox":     "https://esm.sh/@deck.gl/mapbox@9.0.0?deps=@deck.gl/core@9.0.0",
+    "@deck.gl/extensions": "https://esm.sh/@deck.gl/extensions@9.0.0?deps=@deck.gl/core@9.0.0",
+    "@loaders.gl/core":    "https://esm.sh/@loaders.gl/core@4.3.0",
+    "@loaders.gl/3d-tiles":"https://esm.sh/@loaders.gl/3d-tiles@4.3.0?deps=@loaders.gl/core@4.3.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"/>
+<link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css"/>
+<style>
+:root{
+  --bg0:#0d1117;--bg1:#161b22;--bg2:#1c2128;--bg3:#21262d;
+  --br:#30363d;--br2:#21262d;
+  --g:#3fb950;--gdim:#1a4a24;
+  --y:#d29922;--ydim:#3d2e00;
+  --r:#f85149;--rdim:#3d1a19;
+  --b:#58a6ff;
+  --t1:#e6edf3;--t2:#8b949e;--t3:#484f58;
+  --rad:8px;--rads:5px
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  background:var(--bg0);color:var(--t1);height:100vh;display:flex;
+  flex-direction:column;overflow:hidden}
+
+/* HEADER */
+header{background:var(--bg1);border-bottom:1px solid var(--br);height:50px;
+  padding:0 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-icon{width:26px;height:26px;background:linear-gradient(135deg,var(--g),#1a7a3a);
+  border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px}
+.logo-name{font-size:15px;font-weight:700;letter-spacing:-.3px}
+.logo-name span{color:var(--g)}
+.logo-sub{font-size:10px;color:var(--t2);margin-left:6px}
+.badges{display:flex;gap:8px;align-items:center}
+.badge{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+  padding:3px 8px;border-radius:20px;border:1px solid}
+.badge.ir{background:rgba(88,166,255,.1);color:var(--b);border-color:var(--b)}
+.badge.hk{background:var(--gdim);color:var(--g);border-color:var(--g)}
+#serverBadge{background:var(--rdim);color:var(--r);border-color:var(--r);cursor:default}
+#serverBadge.ok{background:var(--gdim);color:var(--g);border-color:var(--g)}
+
+/* TABS */
+.tab-bar{background:var(--bg1);border-bottom:1px solid var(--br);height:40px;
+  padding:0 20px;display:flex;align-items:flex-end;gap:2px;flex-shrink:0}
+.tab-btn{padding:8px 16px;font-size:12px;font-weight:500;background:transparent;
+  border:none;color:var(--t2);cursor:pointer;border-bottom:2px solid transparent;
+  transition:all .15s;white-space:nowrap}
+.tab-btn:hover{color:var(--t1)}
+.tab-btn.active{color:var(--t1);border-bottom-color:var(--g)}
+.tab-btn .dot{display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--t3);margin-right:6px;vertical-align:middle}
+.tab-btn.active .dot,.tab-btn.ready .dot{background:var(--g)}
+.tab-panel{display:none;flex:1;overflow:hidden}
+.tab-panel.active{display:flex}
+
+/* ══ TAB 1 — SIMULATE ══════════════════════════════════ */
+#tab-simulate{flex-direction:row}
+.map-wrap{position:relative;flex:1}
+#map{width:100%;height:100%}
+.map-hint{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
+  background:rgba(13,17,23,.85);border:1px solid var(--br);border-radius:20px;
+  padding:6px 16px;font-size:11px;color:var(--t2);white-space:nowrap;
+  z-index:500;backdrop-filter:blur(4px);pointer-events:none}
+.map-hint.gone{display:none}
+
+/* Heatmap image overlay styling */
+.leaflet-image-layer{image-rendering:pixelated}
+
+/* Pipeline panel */
+.pipeline-panel{width:340px;flex-shrink:0;border-left:1px solid var(--br);
+  background:var(--bg1);display:flex;flex-direction:column;overflow-y:auto}
+.pipeline-panel::-webkit-scrollbar{width:4px}
+.pipeline-panel::-webkit-scrollbar-thumb{background:var(--br);border-radius:2px}
+.pp-sec{padding:14px 16px;border-bottom:1px solid var(--br2)}
+.pp-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;
+  color:var(--t3);margin-bottom:10px}
+label{font-size:11px;color:var(--t2);display:block;margin-bottom:4px}
+select{width:100%;background:var(--bg2);border:1px solid var(--br);border-radius:var(--rads);
+  color:var(--t1);padding:7px 9px;font-size:12px;outline:none}
+.ctrl-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.run-btn{width:100%;margin-top:10px;padding:9px;background:var(--g);border:none;
+  border-radius:var(--rads);color:#0d1117;font-size:12px;font-weight:700;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s}
+.run-btn:hover{background:#4ac161}
+.run-btn:disabled{background:var(--t3);cursor:not-allowed}
+.spin{width:12px;height:12px;border:2px solid rgba(13,17,23,.3);border-top-color:#0d1117;
+  border-radius:50%;animation:sp .6s linear infinite;display:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* Pipeline steps */
+.pipe-step{display:flex;align-items:flex-start;gap:10px;padding:7px 0;font-size:11px;
+  color:var(--t3);opacity:.4;transition:all .25s}
+.pipe-step.active{opacity:1;color:var(--t2)}
+.pipe-step.done{opacity:1;color:var(--g)}
+.pipe-step .ps-icon{font-size:13px;flex-shrink:0;width:18px;text-align:center;margin-top:1px}
+.pipe-step .ps-sub{font-size:10px;color:var(--t3);margin-top:2px}
+
+/* Stats */
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:2px}
+.stat-card{background:var(--bg2);border:1px solid var(--br);border-radius:var(--rads);
+  padding:8px 10px;opacity:0;transform:translateY(4px);transition:opacity .3s,transform .3s}
+.stat-card.show{opacity:1;transform:translateY(0)}
+.stat-card .sc-val{font-size:18px;font-weight:700;color:var(--g);line-height:1}
+.stat-card .sc-lbl{font-size:10px;color:var(--t2);margin-top:2px}
+.zone-bar{background:var(--bg2);border:1px solid var(--br);border-radius:var(--rads);
+  overflow:hidden;margin-top:8px;opacity:0;transition:opacity .4s}
+.zone-bar.show{opacity:1}
+.zone-inner{display:flex;font-size:10px;font-weight:600}
+.z1-band{background:rgba(63,185,80,.15);color:var(--g);border-right:2px solid var(--g);
+  padding:7px 10px;flex:1}
+.z2-band{background:rgba(88,166,255,.1);color:var(--b);padding:7px 10px;flex:1}
+
+/* Error toast */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  background:var(--rdim);border:1px solid var(--r);border-radius:var(--rad);
+  color:var(--r);padding:10px 18px;font-size:12px;z-index:9999;
+  display:none;animation:fadeIn .2s ease}
+.toast.show{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}}
+
+/* ══ TAB 2 — 3D EXPLORE ════════════════════════════════ */
+#tab-explore{flex-direction:row}
+.three-wrap{position:relative;flex:1}
+#three-canvas{width:100%;height:100%;display:block;cursor:crosshair}
+
+/* Hover readout */
+.hover-readout{position:absolute;top:14px;right:14px;
+  background:rgba(13,17,23,.92);border:1px solid var(--br);border-radius:var(--rad);
+  padding:12px 14px;font-size:11px;min-width:200px;
+  backdrop-filter:blur(8px);pointer-events:none;display:none;z-index:100}
+.hover-readout.visible{display:block}
+.hr-zone{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+  padding:2px 8px;border-radius:20px;display:inline-block;margin-bottom:8px}
+.hr-zone.z1{background:var(--gdim);color:var(--g)}
+.hr-zone.z2{background:rgba(88,166,255,.1);color:var(--b)}
+.hr-speed{font-size:28px;font-weight:700;line-height:1;margin-bottom:4px}
+.hr-speed.lo{color:var(--y)} .hr-speed.mid{color:var(--g)} .hr-speed.hi{color:#58e07a}
+.hr-divider{border:none;border-top:1px solid var(--br);margin:8px 0}
+.hr-row{display:flex;justify-content:space-between;font-size:10px;color:var(--t2);margin-bottom:3px}
+.hr-row strong{color:var(--t1)}
+.hr-verdict{margin-top:8px;font-size:10px;font-weight:700;padding:4px 8px;border-radius:20px;text-align:center}
+.hr-verdict.high{background:rgba(88,224,122,.1);color:#58e07a}
+.hr-verdict.ok{background:var(--gdim);color:var(--g)}
+.hr-verdict.marg{background:var(--ydim);color:var(--y)}
+.hr-verdict.no{background:var(--rdim);color:var(--r)}
+
+/* 3D loading overlay */
+.three-loading{position:absolute;inset:0;display:flex;align-items:center;
+  justify-content:center;background:rgba(13,17,23,.75);backdrop-filter:blur(3px);
+  z-index:50;flex-direction:column;gap:12px}
+.three-loading p{font-size:12px;color:var(--t2);text-align:center;max-width:260px;line-height:1.5}
+.three-loading .go-btn{padding:8px 20px;background:var(--g);border:none;border-radius:var(--rads);
+  color:#0d1117;font-size:12px;font-weight:700;cursor:pointer}
+
+/* Zone legend */
+.zone-legend{position:absolute;bottom:14px;left:14px;background:rgba(13,17,23,.85);
+  border:1px solid var(--br);border-radius:var(--rads);padding:8px 12px;
+  font-size:10px;backdrop-filter:blur(4px);pointer-events:none;z-index:100}
+.zl-row{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.zl-row:last-child{margin-bottom:0}
+.zl-dot{width:8px;height:8px;border-radius:2px}
+
+/* Explore controls */
+.explore-controls{width:280px;flex-shrink:0;border-left:1px solid var(--br);
+  background:var(--bg1);display:flex;flex-direction:column;overflow-y:auto}
+.explore-controls::-webkit-scrollbar{width:4px}
+.explore-controls::-webkit-scrollbar-thumb{background:var(--br);border-radius:2px}
+.ec-sec{padding:12px 14px;border-bottom:1px solid var(--br2)}
+.ec-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;
+  color:var(--t3);margin-bottom:10px}
+.tp-item{background:var(--bg2);border:1px solid var(--br);border-radius:var(--rad);
+  padding:10px 12px;cursor:pointer;display:flex;align-items:center;gap:10px;
+  margin-bottom:6px;transition:border-color .15s,background .15s}
+.tp-item:hover{border-color:var(--t3);background:var(--bg3)}
+.tp-item.active{border-color:var(--g);background:var(--gdim)}
+.tp-item.active .tp-name{color:var(--g)}
+.tp-icon{font-size:18px;flex-shrink:0}
+.tp-name{font-size:11px;font-weight:600;color:var(--t1);margin-bottom:2px}
+.tp-detail{font-size:10px;color:var(--t2)}
+.tp-min{font-size:9px;color:var(--t3);margin-top:1px}
+.season-btns{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.sn-btn{padding:6px 4px;background:var(--bg2);border:1px solid var(--br);
+  border-radius:var(--rads);color:var(--t2);font-size:11px;cursor:pointer;
+  text-align:center;transition:all .15s}
+.sn-btn:hover{border-color:var(--t3)}
+.sn-btn.active{color:var(--t1);background:var(--bg3)}
+.sn-btn[data-s="winter"].active{color:var(--b);border-color:var(--b)}
+.sn-btn[data-s="spring"].active{color:var(--g);border-color:var(--g)}
+.sn-btn[data-s="summer"].active{color:var(--y);border-color:var(--y)}
+.sn-btn[data-s="autumn"].active{color:#e07a3f;border-color:#e07a3f}
+.hour-wrap{margin-top:10px}
+.hour-wrap label{display:flex;justify-content:space-between;align-items:center}
+.hour-val{color:var(--t1);font-weight:600}
+input[type=range]{width:100%;margin-top:6px;accent-color:var(--g);background:var(--bg2);
+  height:4px;border-radius:2px;outline:none;border:none}
+
+/* ══ TAB 3 — RESULTS ═══════════════════════════════════ */
+#tab-results{flex-direction:column;overflow-y:auto}
+#tab-results::-webkit-scrollbar{width:6px}
+#tab-results::-webkit-scrollbar-thumb{background:var(--br);border-radius:3px}
+.results-inner{padding:16px;max-width:900px;margin:0 auto;width:100%}
+.sbar{display:flex;gap:4px;padding:4px;background:var(--bg0);border:1px solid var(--br);
+  border-radius:var(--rad);margin-bottom:14px}
+.sb-btn{flex:1;padding:6px 4px;border:none;border-radius:6px;background:transparent;
+  color:var(--t2);font-size:11px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap}
+.sb-btn:hover{background:var(--bg2)}
+.sb-btn.active{background:var(--bg2);color:var(--t1);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.sb-btn[data-s="winter"].active{color:var(--b);border:1px solid rgba(88,166,255,.3)}
+.sb-btn[data-s="spring"].active{color:var(--g);border:1px solid rgba(63,185,80,.3)}
+.sb-btn[data-s="summer"].active{color:var(--y);border:1px solid rgba(210,153,34,.3)}
+.sb-btn[data-s="autumn"].active{color:#e07a3f;border:1px solid rgba(224,122,63,.3)}
+.sbar-info{font-size:11px;color:var(--t2);background:var(--bg0);border:1px solid var(--br);
+  border-radius:var(--rads);padding:7px 12px;margin-bottom:12px;display:none}
+.sbar-info.vis{display:block}
+.tc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.tc{background:var(--bg2);border:1px solid var(--br);border-radius:var(--rad);
+  padding:12px;display:flex;align-items:flex-start;gap:8px;
+  position:relative;overflow:hidden;transition:border-color .2s}
+.tc::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.tc.high::before{background:#58e07a}.tc.ok::before{background:var(--g)}
+.tc.marg::before{background:var(--y)}.tc.no::before{background:var(--r)}
+.tc:hover{border-color:var(--t3)}
+.tc-info{flex:1;min-width:0}
+.tc-type{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;
+  color:var(--t2);margin-bottom:3px}
+.tc-spd{font-size:20px;font-weight:700;line-height:1;transition:color .3s}
+.tc-unit{font-size:10px;font-weight:400;color:var(--t2)}
+.tc-hub{font-size:10px;color:var(--t2);margin-top:3px}
+.tc-min{font-size:9px;color:var(--t3);margin-top:1px}
+.tc-badge{display:inline-flex;align-items:center;margin-top:7px;font-size:9px;font-weight:600;
+  padding:2px 6px;border-radius:20px;text-transform:uppercase;letter-spacing:.3px;transition:all .3s}
+.high .tc-spd{color:#58e07a}.ok .tc-spd{color:var(--g)}
+.marg .tc-spd{color:var(--y)}.no .tc-spd{color:var(--r)}
+.high .tc-badge{background:rgba(88,224,122,.1);color:#58e07a}
+.ok   .tc-badge{background:var(--gdim);color:var(--g)}
+.marg .tc-badge{background:var(--ydim);color:var(--y)}
+.no   .tc-badge{background:var(--rdim);color:var(--r)}
+.tc-svg-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;
+  flex-shrink:0;padding-top:4px}
+.t-tower{fill:rgba(255,255,255,.15)}.t-nacelle{fill:rgba(255,255,255,.2)}
+.t-blade{fill:currentColor}
+.t-hub{fill:var(--bg2);stroke:currentColor;stroke-width:1.5}
+.t-rotor{transform-origin:25px 28px;animation:bspin var(--sd,3s) linear infinite}
+.t-rotor.stopped{animation-play-state:paused;opacity:.3}
+@keyframes bspin{to{transform:rotate(360deg)}}
+.tc-svg-wrap.glow svg{filter:drop-shadow(0 0 4px currentColor)}
+.high .tc-svg-wrap{color:#58e07a}.ok .tc-svg-wrap{color:var(--g)}
+.marg .tc-svg-wrap{color:var(--y)}.no  .tc-svg-wrap{color:var(--r)}
+.tc-svg-spd{font-size:10px;font-weight:700;color:var(--t2);transition:color .3s}
+.tc-svg-lbl{font-size:9px;color:var(--t3);margin-top:-2px}
+.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.chart-box{background:var(--bg2);border:1px solid var(--br);border-radius:var(--rad);padding:14px}
+.chart-box-full{background:var(--bg2);border:1px solid var(--br);border-radius:var(--rad);
+  padding:14px;margin-bottom:14px}
+.chart-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;
+  color:var(--t3);margin-bottom:2px}
+.chart-sub{font-size:10px;color:var(--t2);margin-bottom:10px}
+.alpha-pill{display:inline-flex;align-items:center;gap:5px;
+  background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.2);
+  border-radius:var(--rads);padding:4px 10px;font-size:10px;color:var(--b);margin-bottom:10px}
+.cw{position:relative;height:180px}.cw-sm{position:relative;height:150px}
+.no-data-msg{padding:60px 20px;text-align:center;color:var(--t3)}
+.no-data-msg p{font-size:12px;line-height:1.6;max-width:280px;margin:10px auto}
+
+/* ══ TAB 4 — 3D MAP ════════════════════════════════ */
+#tab-map2{flex-direction:row}
+.map2-wrap{position:relative;flex:1}
+#map2{width:100%;height:100%}
+.map2-controls{width:280px;flex-shrink:0;border-left:1px solid var(--br);
+  background:var(--bg1);display:flex;flex-direction:column;overflow-y:auto}
+.map2-controls::-webkit-scrollbar{width:4px}
+.map2-controls::-webkit-scrollbar-thumb{background:var(--br);border-radius:2px}
+.token-input{width:100%;background:var(--bg2);border:1px solid var(--br);
+  border-radius:var(--rads);color:var(--t1);padding:7px 9px;font-size:11px;
+  outline:none;font-family:monospace}
+.token-input:focus{border-color:var(--b)}
+.load-map-btn{width:100%;margin-top:8px;padding:9px;background:var(--b);border:none;
+  border-radius:var(--rads);color:#0d1117;font-size:12px;font-weight:700;cursor:pointer;
+  transition:background .15s}
+.load-map-btn:hover{background:#79b8ff}
+.map-loaded-badge{display:none;font-size:10px;color:var(--g);padding:4px 0}
+
+/* Heatmap legend */
+.heatmap-legend{position:absolute;bottom:14px;right:14px;z-index:500;
+  background:rgba(13,17,23,.9);border:1px solid var(--br);border-radius:var(--rads);
+  padding:8px 11px;backdrop-filter:blur(5px);display:none;min-width:170px}
+.hl-title{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
+  color:var(--t3);margin-bottom:5px}
+.hl-bar{width:100%;height:8px;border-radius:3px;display:block}
+.hl-ticks{display:flex;justify-content:space-between;margin-top:4px;font-size:9px;color:var(--t2)}
+
+/* Wind-probe hover readout */
+.hr-profile-row{display:flex;justify-content:space-between;align-items:center;
+  padding:2px 4px;margin:1px 0;border-radius:3px;font-size:10px}
+.hr-divider-roof{border:none;border-top:1px solid rgba(88,166,255,.3);margin:4px 0}
+
+/* Stick labels (HTML overlay over Three.js canvas) */
+#stick-labels{position:absolute;inset:0;pointer-events:none;z-index:90;display:none}
+.ws-label{position:absolute;transform:translate(11px,-50%);
+  background:rgba(13,17,23,.9);border:1px solid;border-radius:3px;
+  padding:2px 6px;font-size:10px;font-weight:700;white-space:nowrap;
+  display:flex;align-items:center;gap:5px;display:none}
+.ws-lh{font-size:9px;color:var(--t3);font-weight:400;min-width:34px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🌬</div>
+    <div>
+      <span class="logo-name">Wind<span>Site</span></span>
+      <span class="logo-sub">Urban Wind Turbine Feasibility</span>
+    </div>
+  </div>
+  <div class="badges">
+    <span class="badge" id="serverBadge" title="Click to check server">⬤ Server offline</span>
+    <span class="badge ir">Infrared SDK</span>
+    <span class="badge hk">Hackathon</span>
+  </div>
+</header>
+
+<div class="tab-bar">
+  <button class="tab-btn active" id="tbtn-simulate" onclick="switchTab('simulate')">
+    <span class="dot"></span>Infrared Simulation
+  </button>
+  <button class="tab-btn" id="tbtn-explore" onclick="switchTab('explore')">
+    <span class="dot"></span>3D Explore
+  </button>
+  <button class="tab-btn" id="tbtn-results" onclick="switchTab('results')">
+    <span class="dot"></span>Feasibility
+  </button>
+  <button class="tab-btn" id="tbtn-map2" onclick="switchTab('map2')">
+    <span class="dot"></span>3D Map
+  </button>
+</div>
+
+<!-- ══ TAB 1 ══ -->
+<div class="tab-panel active" id="tab-simulate">
+  <div class="map-wrap">
+    <div id="map"></div>
+    <div class="map-hint" id="mapHint">✏️ Draw a polygon — or use the pre-loaded Eixample area</div>
+    <div class="heatmap-legend" id="heatLegend">
+      <div class="hl-title">Wind Speed · m/s · ground level</div>
+      <canvas class="hl-bar" id="legendBar" height="8"></canvas>
+      <div class="hl-ticks">
+        <span id="legMin">—</span>
+        <span id="legMid">—</span>
+        <span id="legMax">—</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="pipeline-panel">
+    <div class="pp-sec">
+      <div class="pp-title">Simulation Parameters</div>
+      <div class="ctrl-grid">
+        <div>
+          <label>Terrain (α)</label>
+          <select id="terrainSel">
+            <option value="0.14">Open land (0.14)</option>
+            <option value="0.22" selected>Suburban (0.22)</option>
+            <option value="0.28">Dense urban (0.28)</option>
+          </select>
+        </div>
+        <div>
+          <label>Wind direction</label>
+          <select id="windDirSel">
+            <option value="0">N (0°)</option>
+            <option value="45">NE (45°)</option>
+            <option value="90">E (90°)</option>
+            <option value="135">SE (135°)</option>
+            <option value="180">S (180°)</option>
+            <option value="225">SW (225°)</option>
+            <option value="270">W (270°)</option>
+            <option value="315" selected>NW (315°)</option>
+          </select>
+        </div>
+        <div>
+          <label>Wind speed (m/s)</label>
+          <select id="windSpeedSel">
+            <option value="8">8 m/s</option>
+            <option value="12">12 m/s</option>
+            <option value="15" selected>15 m/s</option>
+            <option value="20">20 m/s</option>
+          </select>
+        </div>
+        <div>
+          <label>Base height</label>
+          <select id="baseHSel">
+            <option value="1.5">1.5 m</option>
+            <option value="10" selected>10 m</option>
+          </select>
+        </div>
+      </div>
+      <button class="run-btn" id="runBtn" onclick="runSimulation()">
+        <div class="spin" id="runSpin"></div>
+        <span id="runLbl">▶ Run Infrared Simulation</span>
+      </button>
+    </div>
+
+    <div class="pp-sec">
+      <div class="pp-title">Pipeline</div>
+      <div class="pipe-step" id="ps0">
+        <span class="ps-icon">📡</span>
+        <div><div>POST /api/simulate</div><div class="ps-sub">infrared.city · CFD</div></div>
+      </div>
+      <div class="pipe-step" id="ps1">
+        <span class="ps-icon">🏢</span>
+        <div><div>Fetch building geometry</div><div class="ps-sub" id="ps1sub">—</div></div>
+      </div>
+      <div class="pipe-step" id="ps2">
+        <span class="ps-icon">💨</span>
+        <div><div>Wind CFD simulation</div><div class="ps-sub">8-direction composite</div></div>
+      </div>
+      <div class="pipe-step" id="ps3">
+        <span class="ps-icon">🔲</span>
+        <div><div>Extract merged grid</div><div class="ps-sub" id="ps3sub">—</div></div>
+      </div>
+      <div class="pipe-step" id="ps4">
+        <span class="ps-icon">📐</span>
+        <div><div>Power law extrapolation</div><div class="ps-sub" id="ps4sub">—</div></div>
+      </div>
+      <div class="pipe-step" id="ps5">
+        <span class="ps-icon">🗺️</span>
+        <div><div>Render heatmap</div><div class="ps-sub">canvas → imageOverlay</div></div>
+      </div>
+    </div>
+
+    <div class="pp-sec" id="statsSection">
+      <div class="pp-title">Extracted Data</div>
+      <div class="stat-grid">
+        <div class="stat-card" id="sc0"><div class="sc-val" id="sv0">—</div><div class="sc-lbl">Mean speed</div></div>
+        <div class="stat-card" id="sc1"><div class="sc-val" id="sv1">—</div><div class="sc-lbl">Peak speed</div></div>
+        <div class="stat-card" id="sc2"><div class="sc-val" id="sv2">—</div><div class="sc-lbl">Direction</div></div>
+        <div class="stat-card" id="sc3"><div class="sc-val" id="sv3">—</div><div class="sc-lbl">Grid cells</div></div>
+      </div>
+      <div class="zone-bar" id="zoneBar">
+        <div class="zone-inner">
+          <div class="z1-band">Zone 1 · Infrared<br><span id="z1lbl" style="font-weight:400;font-size:9px">0 → 18 m · α=0.22</span></div>
+          <div class="z2-band">Zone 2 · EPW<br><span style="font-weight:400;font-size:9px">18 m → hub · α=0.12</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB 2 ══ -->
+<div class="tab-panel" id="tab-explore">
+  <div class="three-wrap">
+    <canvas id="three-canvas"></canvas>
+    <div id="stick-labels"></div>
+    <div class="three-loading" id="threeLoading">
+      <p id="threeLoadMsg">Run a simulation first, then open this tab to explore in 3D.</p>
+      <button class="go-btn" id="threeGoBtn" onclick="switchTab('simulate')">→ Run Simulation</button>
+    </div>
+    <div class="hover-readout" id="hoverReadout">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--t3);margin-bottom:7px">Wind Height Profile</div>
+      <div id="hrProfile"></div>
+      <hr class="hr-divider"/>
+      <div class="hr-row"><span>Season</span><strong id="hrSeason">—</strong></div>
+      <div class="hr-row"><span>Hour</span><strong id="hrHour">—</strong></div>
+    </div>
+    <div class="zone-legend">
+      <div class="zl-row"><div class="zl-dot" style="background:rgba(63,185,80,.6)"></div><span style="color:var(--t2)">Zone 1 · Infrared (0 → rooftop)</span></div>
+      <div class="zl-row"><div class="zl-dot" style="background:rgba(88,166,255,.5)"></div><span style="color:var(--t2)">Zone 2 · EPW (above rooftop)</span></div>
+      <div class="zl-row"><div class="zl-dot" style="background:rgba(255,255,255,.12)"></div><span style="color:var(--t2)">Rooftop boundary plane</span></div>
+    </div>
+    <div class="heatmap-legend" id="heatLegend3d" style="right:14px;bottom:14px">
+      <div class="hl-title">Infrared Wind Speed · m/s · ground</div>
+      <canvas class="hl-bar" id="legendBar3d" height="8"></canvas>
+      <div class="hl-ticks">
+        <span id="legMin3d">—</span>
+        <span id="legMid3d">—</span>
+        <span id="legMax3d">—</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="explore-controls">
+    <div class="ec-sec">
+      <div class="ec-title">Highlight Turbine Height</div>
+      <div id="turbinePalette">
+        <div class="tp-item" data-type="lamppost" onclick="selectTurbine('lamppost')">
+          <span class="tp-icon">🏮</span>
+          <div><div class="tp-name">Lamppost VAWT</div><div class="tp-detail">Hub: 5 m · street level</div><div class="tp-min">Min: 5.0 m/s</div></div>
+        </div>
+        <div class="tp-item" data-type="rooftop-vawt" onclick="selectTurbine('rooftop-vawt')">
+          <span class="tp-icon">🌀</span>
+          <div><div class="tp-name">Rooftop VAWT</div><div class="tp-detail">Hub: roof + 3 m</div><div class="tp-min">Min: 3.5 m/s</div></div>
+        </div>
+        <div class="tp-item" data-type="rooftop-hawt" onclick="selectTurbine('rooftop-hawt')">
+          <span class="tp-icon">⚙️</span>
+          <div><div class="tp-name">Rooftop HAWT</div><div class="tp-detail">Hub: roof + 8 m</div><div class="tp-min">Min: 4.5 m/s</div></div>
+        </div>
+        <div class="tp-item" data-type="community" onclick="selectTurbine('community')">
+          <span class="tp-icon">🔋</span>
+          <div><div class="tp-name">Community HAWT</div><div class="tp-detail">Hub: roof + 30 m</div><div class="tp-min">Min: 5.5 m/s</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="ec-sec">
+      <div class="ec-title">Building Color</div>
+      <div style="display:flex;gap:4px;margin-bottom:6px">
+        <button class="sn-btn active" data-lvl="ground" onclick="setBldLevel('ground')" style="flex:1;font-size:10px">Ground</button>
+        <button class="sn-btn"        data-lvl="mid"    onclick="setBldLevel('mid')"    style="flex:1;font-size:10px">Mid</button>
+        <button class="sn-btn"        data-lvl="roof"   onclick="setBldLevel('roof')"   style="flex:1;font-size:10px">Roof</button>
+      </div>
+      <div id="bldColorDesc" style="font-size:10px;color:var(--t3);line-height:1.5">
+        Infrared ground-level wind from simulation grid
+      </div>
+    </div>
+    <div class="ec-sec">
+      <div class="ec-title">Season</div>
+      <div class="season-btns">
+        <button class="sn-btn active" data-s="annual"  onclick="set3DSeason('annual')">≈ Annual</button>
+        <button class="sn-btn"        data-s="winter"  onclick="set3DSeason('winter')">❄️ Winter</button>
+        <button class="sn-btn"        data-s="spring"  onclick="set3DSeason('spring')">🌸 Spring</button>
+        <button class="sn-btn"        data-s="summer"  onclick="set3DSeason('summer')">☀️ Summer</button>
+        <button class="sn-btn"        data-s="autumn"  onclick="set3DSeason('autumn')">🍂 Autumn</button>
+      </div>
+      <div class="hour-wrap">
+        <label><span>Time of day</span><span class="hour-val" id="hourVal">12:00</span></label>
+        <input type="range" id="hourSlider" min="0" max="23" value="12" oninput="setHour(this.value)"/>
+      </div>
+    </div>
+    <div class="ec-sec">
+      <div class="ec-title">Tips</div>
+      <div style="font-size:10px;color:var(--t2);line-height:1.7">
+        <div>🖱 <strong>Hover</strong> over buildings to read wind</div>
+        <div>🔄 <strong>Drag</strong> to orbit the scene</div>
+        <div>🔍 <strong>Scroll</strong> to zoom</div>
+        <div style="margin-top:6px;color:var(--t3)">Hover to see wind speed at<br>each height — no turbine needed</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB 3 ══ -->
+<div class="tab-panel" id="tab-results">
+  <div class="results-inner">
+    <div class="no-data-msg" id="noDataMsg">
+      <div style="font-size:32px">📊</div>
+      <p>Run the Infrared simulation to generate feasibility results.</p>
+    </div>
+    <div id="resultsContent" style="display:none">
+      <div class="sbar">
+        <button class="sb-btn active" data-s="annual" onclick="setResultSeason('annual')">≈ Annual</button>
+        <button class="sb-btn" data-s="winter" onclick="setResultSeason('winter')">❄️ Winter</button>
+        <button class="sb-btn" data-s="spring" onclick="setResultSeason('spring')">🌸 Spring</button>
+        <button class="sb-btn" data-s="summer" onclick="setResultSeason('summer')">☀️ Summer</button>
+        <button class="sb-btn" data-s="autumn" onclick="setResultSeason('autumn')">🍂 Autumn</button>
+      </div>
+      <div class="sbar-info" id="sbarInfo"></div>
+      <div class="tc-grid" id="tcGrid">
+        <!-- Lamppost VAWT -->
+        <div class="tc ok" id="tc-lp">
+          <div class="tc-info">
+            <div class="tc-type">Lamppost VAWT</div>
+            <div class="tc-spd" id="spd-lp">— <span class="tc-unit">m/s</span></div>
+            <div class="tc-hub">Hub: 5 m (street)</div>
+            <div class="tc-min">Min: 5.0 m/s</div>
+            <div class="tc-badge" id="badge-lp">—</div>
+          </div>
+          <div class="tc-svg-wrap" id="vis-lp">
+            <svg viewBox="0 0 50 78" width="32" height="50" style="overflow:visible">
+              <polygon class="t-tower" points="22,32 28,32 26.5,75 23.5,75"/>
+              <rect class="t-nacelle" x="19" y="25" width="12" height="8" rx="2"/>
+              <g class="t-rotor" id="rot-lp">
+                <path class="t-blade" d="M25,28 C22,22 22,16 25,7 C28,16 28,22 25,28 Z"/>
+                <path class="t-blade" d="M25,28 C22,22 22,16 25,7 C28,16 28,22 25,28 Z" transform="rotate(120,25,28)"/>
+                <path class="t-blade" d="M25,28 C22,22 22,16 25,7 C28,16 28,22 25,28 Z" transform="rotate(240,25,28)"/>
+              </g>
+              <circle class="t-hub" cx="25" cy="28" r="3.5"/>
+            </svg>
+            <div class="tc-svg-spd" id="ssvg-lp">—</div>
+            <div class="tc-svg-lbl" id="slbl-lp">annual</div>
+          </div>
+        </div>
+        <!-- Rooftop VAWT -->
+        <div class="tc ok" id="tc-rv">
+          <div class="tc-info">
+            <div class="tc-type">Rooftop VAWT</div>
+            <div class="tc-spd" id="spd-rv">— <span class="tc-unit">m/s</span></div>
+            <div class="tc-hub">Hub: roof + 3 m</div>
+            <div class="tc-min">Min: 3.5 m/s</div>
+            <div class="tc-badge" id="badge-rv">—</div>
+          </div>
+          <div class="tc-svg-wrap" id="vis-rv">
+            <svg viewBox="0 0 50 78" width="36" height="56" style="overflow:visible">
+              <polygon class="t-tower" points="22,32 28,32 26.5,75 23.5,75"/>
+              <rect class="t-nacelle" x="19" y="25" width="12" height="8" rx="2"/>
+              <g class="t-rotor" id="rot-rv">
+                <path class="t-blade" d="M25,28 C22,22 22,16 25,7 C28,16 28,22 25,28 Z"/>
+                <path class="t-blade" d="M25,28 C22,22 22,16 25,7 C28,16 28,22 25,28 Z" transform="rotate(120,25,28)"/>
+                <path class="t-blade" d="M25,28 C22,22 22,16 25,7 C28,16 28,22 25,28 Z" transform="rotate(240,25,28)"/>
+              </g>
+              <circle class="t-hub" cx="25" cy="28" r="3.5"/>
+            </svg>
+            <div class="tc-svg-spd" id="ssvg-rv">—</div>
+            <div class="tc-svg-lbl" id="slbl-rv">annual</div>
+          </div>
+        </div>
+        <!-- Rooftop HAWT -->
+        <div class="tc ok" id="tc-rh">
+          <div class="tc-info">
+            <div class="tc-type">Rooftop HAWT</div>
+            <div class="tc-spd" id="spd-rh">— <span class="tc-unit">m/s</span></div>
+            <div class="tc-hub">Hub: roof + 8 m</div>
+            <div class="tc-min">Min: 4.5 m/s</div>
+            <div class="tc-badge" id="badge-rh">—</div>
+          </div>
+          <div class="tc-svg-wrap" id="vis-rh">
+            <svg viewBox="0 0 50 78" width="40" height="62" style="overflow:visible">
+              <polygon class="t-tower" points="22,32 28,32 26.5,75 23.5,75"/>
+              <rect class="t-nacelle" x="19" y="25" width="12" height="8" rx="2"/>
+              <g class="t-rotor" id="rot-rh">
+                <path class="t-blade" d="M25,28 C22,22 22,16 25,7 C28,16 28,22 25,28 Z"/>
+                <path class="t-blade" d="M25,28 C22,22 22,16 25,7 C28,16 28,22 25,28 Z" transform="rotate(120,25,28)"/>
+                <path class="t-blade" d="M25,28 C22,22 22,16 25,7 C28,16 28,22 25,28 Z" transform="rotate(240,25,28)"/>
+              </g>
+              <circle class="t-hub" cx="25" cy="28" r="3.5"/>
+            </svg>
+            <div class="tc-svg-spd" id="ssvg-rh">—</div>
+            <div class="tc-svg-lbl" id="slbl-rh">annual</div>
+          </div>
+        </div>
+        <!-- Community HAWT -->
+        <div class="tc ok" id="tc-ch">
+          <div class="tc-info">
+            <div class="tc-type">Community HAWT</div>
+            <div class="tc-spd" id="spd-ch">— <span class="tc-unit">m/s</span></div>
+            <div class="tc-hub">Hub: roof + 30 m</div>
+            <div class="tc-min">Min: 5.5 m/s</div>
+            <div class="tc-badge" id="badge-ch">—</div>
+          </div>
+          <div class="tc-svg-wrap" id="vis-ch">
+            <svg viewBox="0 0 50 78" width="46" height="72" style="overflow:visible">
+              <polygon class="t-tower" points="22,32 28,32 26.5,75 23.5,75"/>
+              <rect class="t-nacelle" x="19" y="25" width="12" height="8" rx="2"/>
+              <g class="t-rotor" id="rot-ch">
+                <path class="t-blade" d="M25,28 C22,22 22,16 25,7 C28,16 28,22 25,28 Z"/>
+                <path class="t-blade" d="M25,28 C22,22 22,16 25,7 C28,16 28,22 25,28 Z" transform="rotate(120,25,28)"/>
+                <path class="t-blade" d="M25,28 C22,22 22,16 25,7 C28,16 28,22 25,28 Z" transform="rotate(240,25,28)"/>
+              </g>
+              <circle class="t-hub" cx="25" cy="28" r="3.5"/>
+            </svg>
+            <div class="tc-svg-spd" id="ssvg-ch">—</div>
+            <div class="tc-svg-lbl" id="slbl-ch">annual</div>
+          </div>
+        </div>
+      </div>
+      <div class="chart-box-full">
+        <div class="chart-title">Wind Speed by Height — Two-Zone Model</div>
+        <div class="chart-sub">Infrared (ground → rooftop) + EPW power law (above rooftop)</div>
+        <div class="alpha-pill" id="alphaPill">📐 α = 0.22</div>
+        <div class="cw"><canvas id="heightChart"></canvas></div>
+      </div>
+      <div class="charts-grid">
+        <div class="chart-box">
+          <div class="chart-title">Wind Rose</div>
+          <div class="chart-sub">Direction frequency (%)</div>
+          <div class="cw-sm"><canvas id="roseChart"></canvas></div>
+        </div>
+        <div class="chart-box">
+          <div class="chart-title">Speed Distribution</div>
+          <div class="chart-sub">Weibull fit to simulation data</div>
+          <div class="cw-sm"><canvas id="distChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB 4 — 3D MAP ══ -->
+<div class="tab-panel" id="tab-map2">
+  <div class="map2-wrap">
+    <div id="map2"></div>
+    <!-- Heatmap legend -->
+    <div class="heatmap-legend" id="heatLegendMap2" style="bottom:40px;left:14px">
+      <div class="hl-title">Infrared Wind Speed · m/s · ground</div>
+      <canvas class="hl-bar" id="legendBarMap2" height="8"></canvas>
+      <div class="hl-ticks">
+        <span id="legMinMap2">—</span>
+        <span id="legMidMap2">—</span>
+        <span id="legMaxMap2">—</span>
+      </div>
+    </div>
+    <!-- Wind profile readout -->
+    <div class="hover-readout" id="hoverReadoutMap2" style="top:14px;left:14px;right:auto">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--t3);margin-bottom:7px">Wind Height Profile</div>
+      <div id="hrProfileMap2"></div>
+      <hr class="hr-divider"/>
+      <div class="hr-row"><span>Season</span><strong id="hrSeasonMap2">—</strong></div>
+      <div class="hr-row"><span>Hour</span><strong id="hrHourMap2">—</strong></div>
+    </div>
+  </div>
+
+  <div class="map2-controls">
+    <!-- Token setup -->
+    <div class="ec-sec" id="map2TokenSec">
+      <div class="ec-title">Mapbox Token</div>
+      <div style="font-size:10px;color:var(--t2);margin-bottom:6px;line-height:1.5">
+        Free at <strong style="color:var(--b)">mapbox.com</strong> → Account → Tokens
+      </div>
+      <input class="token-input" id="mapboxTokenInput" type="text"
+             placeholder="pk.eyJ1…" oninput="onMapboxTokenChange(this.value)"/>
+      <div class="ec-title" style="margin-top:10px">Cesium Ion Token</div>
+      <div style="font-size:10px;color:var(--t2);margin-bottom:6px;line-height:1.5">
+        Free at <strong style="color:var(--b)">cesium.com/ion</strong> → Access Tokens<br>
+        <span style="color:var(--t3)">Needed for Google Photorealistic 3D Tiles</span>
+      </div>
+      <input class="token-input" id="cesiumTokenInput" type="text"
+             placeholder="eyJhbGci…" oninput="onCesiumTokenChange(this.value)"/>
+      <button class="load-map-btn" onclick="initMap2()">Load 3D Map</button>
+      <div class="map-loaded-badge" id="map2Badge">✓ Map loaded — Google 3D Tiles</div>
+    </div>
+
+    <!-- Season -->
+    <div class="ec-sec">
+      <div class="ec-title">Season</div>
+      <div class="season-btns">
+        <button class="sn-btn active" data-sm="annual"  onclick="setMap2Season('annual')">≈ Annual</button>
+        <button class="sn-btn"        data-sm="winter"  onclick="setMap2Season('winter')">❄️ Winter</button>
+        <button class="sn-btn"        data-sm="spring"  onclick="setMap2Season('spring')">🌸 Spring</button>
+        <button class="sn-btn"        data-sm="summer"  onclick="setMap2Season('summer')">☀️ Summer</button>
+        <button class="sn-btn"        data-sm="autumn"  onclick="setMap2Season('autumn')">🍂 Autumn</button>
+      </div>
+      <div class="hour-wrap">
+        <label><span>Time of day</span><span class="hour-val" id="hourValMap2">12:00</span></label>
+        <input type="range" id="hourSliderMap2" min="0" max="23" value="12" oninput="setMap2Hour(this.value)"/>
+      </div>
+    </div>
+
+    <!-- Tips -->
+    <div class="ec-sec">
+      <div class="ec-title">Tips</div>
+      <div style="font-size:10px;color:var(--t2);line-height:1.7">
+        <div>🖱 <strong>Hover</strong> to read wind at each height</div>
+        <div>🔄 <strong>Left drag</strong> to orbit</div>
+        <div>🖱 <strong>Right drag</strong> to tilt / rotate</div>
+        <div>🔍 <strong>Scroll</strong> to zoom</div>
+        <div style="margin-top:6px;color:var(--t3)">Buildings: OpenStreetMap extrusions<br>Heatmap: Infrared simulation grid</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+
+// ════════════════════════════════════════════════
+// CONFIG
+// ════════════════════════════════════════════════
+const API = 'http://localhost:8000';
+
+// Default polygon — Barcelona Eixample
+const DEFAULT_POLYGON = {
+  type: 'Polygon',
+  coordinates: [[
+    [2.1600, 41.3900], [2.1640, 41.3900],
+    [2.1640, 41.3937], [2.1600, 41.3937],
+    [2.1600, 41.3900],
+  ]]
+};
+
+// ════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════
+const ST = {
+  simDone:     false,
+  meanSpeed:   0,
+  baseH:       10,
+  alpha:       0.22,
+  roofH:       18,
+  season:      'annual',
+  hour:        12,
+  turbineType: null,
+  simData:     null,   // raw server response
+  geoData:     null,   // geometry response
+};
+
+const SEASONS = {
+  annual: { mult:1.00, icon:'≈',  label:'Annual Mean',  color:'#8b949e',
+    info:'Showing annual average.' },
+  winter: { mult:1.30, icon:'❄️', label:'Winter',       color:'#58a6ff',
+    info:'Winter winds are <strong>30% above average</strong> — peak output.' },
+  spring: { mult:1.05, icon:'🌸', label:'Spring',       color:'#3fb950',
+    info:'Spring is <strong>5% above average</strong>.' },
+  summer: { mult:0.72, icon:'☀️', label:'Summer',       color:'#d29922',
+    info:'Summer winds drop <strong>28%</strong> — some turbines may stall.' },
+  autumn: { mult:0.95, icon:'🍂', label:'Autumn',       color:'#e07a3f',
+    info:'Autumn is <strong>5% below average</strong>.' },
+};
+const DIURNAL = [.68,.63,.60,.60,.64,.74,.85,.92,.97,1.01,1.06,1.10,
+                 1.14,1.10,1.06,1.01,.96,.91,.86,.85,.81,.77,.75,.70];
+
+const TURBINES = {
+  'lamppost':     { label:'Lamppost VAWT',  minSpd:5.0, hubAGL:5,   aboveRoof:false },
+  'rooftop-vawt': { label:'Rooftop VAWT',   minSpd:3.5, hubAboveRoof:3,  aboveRoof:true },
+  'rooftop-hawt': { label:'Rooftop HAWT',   minSpd:4.5, hubAboveRoof:8,  aboveRoof:true },
+  'community':    { label:'Community HAWT', minSpd:5.5, hubAboveRoof:30, aboveRoof:true },
+};
+
+// ════════════════════════════════════════════════
+// UTILITIES
+// ════════════════════════════════════════════════
+function pl(v, h1, h2, a) { return v * Math.pow(h2 / h1, a); }
+function spinDur(spd) { return spd < 3 ? null : Math.max(0.55, 18 / spd); }
+function hubSpeed(type, buildingH, season, hour) {
+  const t  = TURBINES[type];
+  const sm = SEASONS[season].mult;
+  const dm = DIURNAL[hour];
+  const base = ST.meanSpeed * sm * dm;
+  if (!t.aboveRoof) return pl(base, ST.baseH, t.hubAGL, ST.alpha);
+  const roofH = buildingH || ST.roofH;
+  const hubH  = roofH + t.hubAboveRoof;
+  if (hubH <= ST.roofH) return pl(base, ST.baseH, hubH, ST.alpha);
+  const atRoof = pl(base, ST.baseH, ST.roofH, ST.alpha);
+  return pl(atRoof, ST.roofH, hubH, 0.12);
+}
+function verdict(spd, min) {
+  if (spd >= min * 1.3) return { cls:'high', txt:'✦ Highly Feasible' };
+  if (spd >= min)       return { cls:'ok',   txt:'✓ Feasible' };
+  if (spd >= min * .8)  return { cls:'marg', txt:'~ Marginal' };
+  return                       { cls:'no',   txt:'✗ Not Feasible' };
+}
+
+function showToast(msg, dur = 4000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), dur);
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ════════════════════════════════════════════════
+// SERVER HEALTH CHECK
+// ════════════════════════════════════════════════
+async function checkServer() {
+  const badge = document.getElementById('serverBadge');
+  try {
+    const r = await fetch(`${API}/api/health`, { signal: AbortSignal.timeout(3000) });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      badge.textContent = '⬤ Server online';
+      badge.classList.add('ok');
+      if (!d.infrared_key) {
+        badge.textContent = '⬤ No API key';
+        badge.classList.remove('ok');
+        showToast('⚠️ Server is running but INFRARED_API_KEY is not set.');
+      }
+    }
+  } catch {
+    badge.textContent = '⬤ Server offline';
+    badge.classList.remove('ok');
+  }
+}
+checkServer();
+
+// ════════════════════════════════════════════════
+// TAB SWITCHING
+// ════════════════════════════════════════════════
+function switchTab(name) {
+  ['simulate','explore','results','map2'].forEach(t => {
+    document.getElementById('tab-'+t).classList.toggle('active', t === name);
+    document.getElementById('tbtn-'+t).classList.toggle('active', t === name);
+  });
+  if (name === 'explore') initThreeScene();
+  if (name === 'results' && ST.simDone) renderResultsTab(ST.season);
+  if (name === 'map2' && map2 && ST.simData) addHeatmapToMap2();
+}
+
+// ════════════════════════════════════════════════
+// LEAFLET MAP
+// ════════════════════════════════════════════════
+const map = L.map('map', { zoomControl: false }).setView([41.392, 2.162], 15);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  { attribution:'© OpenStreetMap © CARTO', subdomains:'abcd', maxZoom:19 }).addTo(map);
+L.control.zoom({ position:'bottomright' }).addTo(map);
+
+const drawnItems = new L.FeatureGroup().addTo(map);
+const drawCtrl = new L.Control.Draw({
+  position:'topleft',
+  draw:{
+    polygon:{ allowIntersection:false,
+      shapeOptions:{ color:'#3fb950', fillColor:'#3fb950', fillOpacity:.1, weight:2 } },
+    polyline:false, rectangle:false, circle:false, circlemarker:false, marker:false
+  },
+  edit:{ featureGroup:drawnItems }
+});
+map.addControl(drawCtrl);
+map.on(L.Draw.Event.CREATED, e => {
+  drawnItems.clearLayers();
+  drawnItems.addLayer(e.layer);
+  document.getElementById('mapHint').classList.add('gone');
+});
+
+// Draw default polygon
+const defaultPoly = L.polygon(
+  DEFAULT_POLYGON.coordinates[0].map(c => [c[1], c[0]]),
+  { color:'#3fb950', fillColor:'#3fb950', fillOpacity:.08, weight:2 }
+).addTo(drawnItems);
+document.getElementById('mapHint').classList.add('gone');
+
+let heatOverlay = null;
+
+// ── Heatmap rendering ──────────────────────────
+function gridToCanvas(grid, minV, maxV, alpha = 185) {
+  const rows = grid.length, cols = grid[0].length;
+  const canvas = document.createElement('canvas');
+  canvas.width = cols; canvas.height = rows;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(cols, rows);
+  for (let r = 0; r < rows; r++) {
+    const srcRow = grid[rows - 1 - r]; // Infrared row 0 = south; flip to north-up
+    for (let c = 0; c < cols; c++) {
+      const v = srcRow[c];
+      const i = (r * cols + c) * 4;
+      if (v === null || v === undefined) { img.data[i+3] = 0; continue; }
+      const t = Math.max(0, Math.min(1, (v - minV) / (maxV - minV)));
+      const [rv, gv, bv] = windColor(t);
+      img.data[i]=rv; img.data[i+1]=gv; img.data[i+2]=bv; img.data[i+3]=alpha;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
+}
+
+function windColor(t) {
+  if (t < 0.33) {
+    const s = t / 0.33;
+    return [30, Math.round(60 + 130*s), Math.round(150 - 80*s)];
+  }
+  if (t < 0.66) {
+    const s = (t - 0.33) / 0.33;
+    return [Math.round(190*s), Math.round(185), Math.round(70 - 50*s)];
+  }
+  const s = (t - 0.66) / 0.34;
+  return [Math.round(63 + 142*s), Math.round(185 - 120*s), 20];
+}
+
+function renderHeatmap(simData) {
+  if (heatOverlay) map.removeLayer(heatOverlay);
+  const { grid, bounds, minLegend, maxLegend } = simData;
+  const canvas = gridToCanvas(grid, minLegend, maxLegend);
+  const sw = bounds.sw, ne = bounds.ne;
+  heatOverlay = L.imageOverlay(canvas.toDataURL('image/png'),
+    [[sw[0], sw[1]], [ne[0], ne[1]]],
+    { opacity: 0.75, interactive: false }
+  ).addTo(map);
+  buildLegend(minLegend ?? 0, maxLegend ?? 10);
+}
+
+function buildLegend(minV, maxV) {
+  const el = document.getElementById('heatLegend');
+  el.style.display = 'block';
+  const bar = document.getElementById('legendBar');
+  bar.width = bar.offsetWidth || 160;
+  const ctx = bar.getContext('2d');
+  const grd = ctx.createLinearGradient(0, 0, bar.width, 0);
+  for (let i = 0; i <= 20; i++) {
+    const [r, g, b] = windColor(i / 20);
+    grd.addColorStop(i / 20, `rgb(${r},${g},${b})`);
+  }
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, bar.width, bar.height);
+  document.getElementById('legMin').textContent = minV.toFixed(1);
+  document.getElementById('legMid').textContent = ((minV + maxV) / 2).toFixed(1);
+  document.getElementById('legMax').textContent = maxV.toFixed(1) + ' m/s';
+}
+
+// ════════════════════════════════════════════════
+// SIMULATION (calls real server)
+// ════════════════════════════════════════════════
+function getActivePolygon() {
+  const layers = drawnItems.getLayers();
+  if (!layers.length) return DEFAULT_POLYGON;
+  const latlngs = layers[0].getLatLngs()[0];
+  const coords  = latlngs.map(ll => [ll.lng, ll.lat]);
+  if (coords[coords.length-1][0] !== coords[0][0] || coords[coords.length-1][1] !== coords[0][1])
+    coords.push(coords[0]);
+  return { type:'Polygon', coordinates:[coords] };
+}
+
+async function runSimulation() {
+  const btn  = document.getElementById('runBtn');
+  const spin = document.getElementById('runSpin');
+  btn.disabled = true;
+  spin.style.display = 'block';
+  document.getElementById('runLbl').textContent = 'Simulating…';
+
+  ST.alpha  = parseFloat(document.getElementById('terrainSel').value);
+  ST.baseH  = parseFloat(document.getElementById('baseHSel').value);
+  const ws  = parseInt(document.getElementById('windSpeedSel').value);
+  const wd  = parseInt(document.getElementById('windDirSel').value);
+  const polygon = getActivePolygon();
+
+  // Animate pipeline steps
+  const stepIds = ['ps0','ps1','ps2','ps3','ps4','ps5'];
+  stepIds.forEach(s => { const el = document.getElementById(s); el.classList.remove('done','active'); });
+
+  async function stepOn(id, subId, subTxt) {
+    document.getElementById(id).classList.add('active');
+    if (subId) document.getElementById(subId).textContent = subTxt;
+    await delay(300);
+  }
+  async function stepDone(id) {
+    await delay(200);
+    document.getElementById(id).classList.add('done');
+  }
+
+  try {
+    await stepOn('ps0', null, null);
+    await stepDone('ps0');
+
+    await stepOn('ps1', 'ps1sub',
+      `${polygon.coordinates[0].length - 1} vertices · ${(ws + ' m/s from ' + wd + '°')}`);
+
+    document.getElementById('ps2').classList.add('active');
+
+    // Call real server
+    const res = await fetch(`${API}/api/simulate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ polygon, wind_speed: ws, wind_direction: wd }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Server error ${res.status}: ${err}`);
+    }
+
+    await stepDone('ps1');
+    await stepDone('ps2');
+
+    const data = await res.json();
+    ST.simData  = data;
+    ST.meanSpeed = parseFloat(data.meanSpeed) || 5.0;
+
+    await stepOn('ps3', 'ps3sub',
+      `${data.shape[0]}×${data.shape[1]} grid · ${data.minLegend?.toFixed(1)}–${data.maxLegend?.toFixed(1)} m/s`);
+    await stepDone('ps3');
+
+    await stepOn('ps4', 'ps4sub',
+      `α=${ST.alpha} · base ${ST.baseH} m · roof ~${ST.roofH} m`);
+    await delay(200);
+    document.getElementById('z1lbl').textContent = `0 → ${ST.roofH} m · α=${ST.alpha}`;
+    await stepDone('ps4');
+
+    await stepOn('ps5', null, null);
+    renderHeatmap(data);
+    await stepDone('ps5');
+
+    // Stats
+    const speeds = data.grid.flat().filter(v => v !== null);
+    const mean   = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+    const peak   = Math.max(...speeds);
+    document.getElementById('sv0').textContent = mean.toFixed(1) + ' m/s';
+    document.getElementById('sv1').textContent = peak.toFixed(1) + ' m/s';
+    document.getElementById('sv2').textContent = ['N','NE','E','SE','S','SW','W','NW'][Math.round(wd/45)%8];
+    document.getElementById('sv3').textContent = data.shape[0]*data.shape[1];
+    [0,1,2,3].forEach((i,idx) =>
+      setTimeout(() => document.getElementById('sc'+i).classList.add('show'), idx*120));
+    setTimeout(() => document.getElementById('zoneBar').classList.add('show'), 500);
+
+    ST.simDone = true;
+    ST.meanSpeed = mean;
+
+    document.getElementById('tbtn-explore').classList.add('ready');
+    document.getElementById('tbtn-results').classList.add('ready');
+
+    // Update heatmaps in other tabs if already open
+    if (threeReady) applyHeatmapToGround();
+    addHeatmapToMap2();
+
+    // Auto-load geometry for 3D scene
+    loadGeometry(polygon);
+
+  } catch (err) {
+    showToast('❌ ' + err.message);
+    console.error(err);
+    stepIds.forEach(s => document.getElementById(s).classList.remove('active'));
+  } finally {
+    btn.disabled = false;
+    spin.style.display = 'none';
+    document.getElementById('runLbl').textContent = '↺ Re-run Simulation';
+  }
+}
+
+// ════════════════════════════════════════════════
+// THREE.JS — 3D SCENE
+// ════════════════════════════════════════════════
+let threeReady = false, geoFetched = false;
+let renderer3, scene3, camera3, controls3;
+let buildingMeshes = [], groundPlane, zonePlane;
+let windStick = null;
+let heatmapPlane = null;
+let bldColorLevel = 'ground';
+let stickLabelEls = null;
+const STICK_H_LABELS = ['1.5 m','5 m','10 m','roof','roof+3','roof+8','roof+30'];
+const raycaster = new THREE.Raycaster();
+const mouse3    = new THREE.Vector2();
+
+// ── Per-building wind speed from simulation grid ─────
+function buildingWindSpeed(b, level) {
+  let groundSpd = ST.meanSpeed;
+  if (ST.simData && ST.geoData) {
+    const { grid, bounds, shape } = ST.simData;
+    const { swLon, swLat } = ST.geoData;
+    const rows = shape[0], cols = shape[1];
+    const sw = bounds.sw, ne = bounds.ne;
+    const lonM = 111320 * Math.cos(swLat * Math.PI / 180);
+    const bLat = swLat + b.cy / 111320;
+    const bLon = swLon + b.cx / lonM;
+    const col = Math.round((bLon - sw[1]) / (ne[1] - sw[1]) * (cols - 1));
+    const row = Math.round((ne[0] - bLat) / (ne[0] - sw[0]) * (rows - 1));
+    if (row >= 0 && row < rows && col >= 0 && col < cols) {
+      const v = grid[row][col];
+      if (v !== null && v !== undefined) groundSpd = v;
+    }
+  }
+  if (level === 'ground') return groundSpd;
+  const h = level === 'roof' ? b.height : b.height / 2;
+  if (h <= ST.baseH) return groundSpd;
+  if (h <= ST.roofH) return pl(groundSpd, ST.baseH, h, ST.alpha);
+  const atRoof = pl(groundSpd, ST.baseH, ST.roofH, ST.alpha);
+  return pl(atRoof, ST.roofH, h, 0.12);
+}
+
+function recolorBuildings() {
+  if (!buildingMeshes.length) return;
+  const speeds = buildingMeshes.map(m => {
+    const b = m.userData.bldData;
+    return b ? buildingWindSpeed(b, bldColorLevel) : ST.meanSpeed;
+  });
+  const minS = Math.min(...speeds), maxS = Math.max(...speeds);
+  const range = maxS - minS || 1;
+  const botCol = new THREE.Color(0x111820);
+  buildingMeshes.forEach((mesh, idx) => {
+    const b = mesh.userData.bldData;
+    if (!b) return;
+    const t = (speeds[idx] - minS) / range;
+    const [rv, gv, bv] = windColor(Math.min(1, t * 0.88 + 0.06));
+    const topCol = new THREE.Color(rv/255, gv/255, bv/255);
+    const posA = mesh.geometry.attributes.position;
+    const cols = new Float32Array(posA.count * 3);
+    for (let i = 0; i < posA.count; i++) {
+      const vt = Math.max(0, posA.getY(i) / b.height);
+      const c = botCol.clone().lerp(topCol, Math.pow(vt, 1.6));
+      cols[i*3] = c.r; cols[i*3+1] = c.g; cols[i*3+2] = c.b;
+    }
+    mesh.geometry.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    mesh.geometry.attributes.color.needsUpdate = true;
+  });
+}
+
+// ── Heatmap ground plane ─────────────────────────────
+function applyHeatmapToGround() {
+  if (!ST.simData || !ST.geoData || !scene3) return;
+
+  // Remove previous heatmap plane
+  if (heatmapPlane) { scene3.remove(heatmapPlane); heatmapPlane = null; }
+
+  const { grid, bounds, minLegend, maxLegend } = ST.simData;
+  const { swLon, swLat, buildings: bs } = ST.geoData;
+  if (!bs || !bs.length) return;
+
+  // Scene centre used in rebuildCity (must match exactly)
+  const allCx = bs.map(b => b.cx), allCy = bs.map(b => b.cy);
+  const sceneCx = (Math.min(...allCx) + Math.max(...allCx)) / 2;
+  const sceneCy = (Math.min(...allCy) + Math.max(...allCy)) / 2;
+
+  // Convert simulation bounds from lat/lon → local metres
+  const lonM  = 111320 * Math.cos(swLat * Math.PI / 180);
+  const sw_x  = (bounds.sw[1] - swLon) * lonM;
+  const sw_y  = (bounds.sw[0] - swLat) * 111320;
+  const ne_x  = (bounds.ne[1] - swLon) * lonM;
+  const ne_y  = (bounds.ne[0] - swLat) * 111320;
+
+  const width  = ne_x - sw_x;         // east-west metres
+  const depth  = ne_y - sw_y;         // north-south metres
+  // Centre in Three.js space (X=east, Z=-north)
+  const cx3 = (sw_x + ne_x) / 2 - sceneCx;
+  const cz3 = -((sw_y + ne_y) / 2 - sceneCy);
+
+  // Build texture — full opacity so it reads clearly on the dark ground
+  const canvas  = gridToCanvas(grid, minLegend ?? 0, maxLegend ?? 10, 220);
+  const texture = new THREE.CanvasTexture(canvas);
+
+  const geo = new THREE.PlaneGeometry(width, depth);
+  geo.rotateX(-Math.PI / 2);
+
+  heatmapPlane = new THREE.Mesh(geo,
+    new THREE.MeshBasicMaterial({
+      map: texture, transparent: true, opacity: 0.82, depthWrite: false
+    })
+  );
+  heatmapPlane.position.set(cx3, 0.25, cz3);
+  scene3.add(heatmapPlane);
+
+  // Populate the 3D legend
+  const minV = minLegend ?? 0, maxV = maxLegend ?? 10;
+  const el = document.getElementById('heatLegend3d');
+  el.style.display = 'block';
+  const bar = document.getElementById('legendBar3d');
+  bar.width = bar.offsetWidth || 160;
+  const ctx = bar.getContext('2d');
+  const grd = ctx.createLinearGradient(0, 0, bar.width, 0);
+  for (let i = 0; i <= 20; i++) {
+    const [r, g, b] = windColor(i / 20);
+    grd.addColorStop(i / 20, `rgb(${r},${g},${b})`);
+  }
+  ctx.fillStyle = grd; ctx.fillRect(0, 0, bar.width, bar.height);
+  document.getElementById('legMin3d').textContent = minV.toFixed(1);
+  document.getElementById('legMid3d').textContent = ((minV + maxV) / 2).toFixed(1);
+  document.getElementById('legMax3d').textContent = maxV.toFixed(1) + ' m/s';
+}
+
+function setBldLevel(lvl) {
+  bldColorLevel = lvl;
+  document.querySelectorAll('[data-lvl]').forEach(b =>
+    b.classList.toggle('active', b.dataset.lvl === lvl));
+  const descs = {
+    ground: 'Infrared ground-level wind from simulation grid',
+    mid:    'Power law to mid-building height · Zone 1 · α=' + ST.alpha,
+    roof:   'Power law to rooftop height · Zone 1 · α=' + ST.alpha,
+  };
+  document.getElementById('bldColorDesc').textContent = descs[lvl];
+  recolorBuildings();
+}
+
+async function loadGeometry(polygon) {
+  if (geoFetched) return;
+  try {
+    const res = await fetch(`${API}/api/geometry`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ polygon }),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    ST.geoData = data;
+    geoFetched = true;
+
+    // If 3D scene already open, rebuild with real data
+    if (threeReady) rebuildCity(data);
+    else {
+      const msg = document.getElementById('threeLoadMsg');
+      const btn = document.getElementById('threeGoBtn');
+      msg.textContent = `Real geometry loaded: ${data.buildings.length} buildings · ${data.trees.length} trees`;
+      btn.textContent = '→ Open 3D View';
+      btn.onclick = () => switchTab('explore');
+    }
+  } catch (e) {
+    console.warn('Geometry load failed:', e);
+  }
+}
+
+function initThreeScene() {
+  if (threeReady) {
+    // If we now have geo data but haven't built with it yet
+    if (ST.geoData && buildingMeshes.length === 0) rebuildCity(ST.geoData);
+    return;
+  }
+  threeReady = true;
+
+  const canvas = document.getElementById('three-canvas');
+  renderer3 = new THREE.WebGLRenderer({ canvas, antialias:true });
+  renderer3.setPixelRatio(window.devicePixelRatio);
+  renderer3.setClearColor(0x0d1117, 1);
+  resizeThree();
+
+  scene3 = new THREE.Scene();
+  scene3.fog = new THREE.Fog(0x0d1117, 400, 900);
+
+  camera3 = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 2000);
+  camera3.position.set(150, 120, 150);
+  camera3.lookAt(0, 15, 0);
+
+  controls3 = new THREE.OrbitControls(camera3, renderer3.domElement);
+  controls3.enableDamping = true; controls3.dampingFactor = 0.08;
+  controls3.target.set(0, 15, 0); controls3.maxPolarAngle = Math.PI / 2.05;
+
+  // Lights
+  scene3.add(new THREE.AmbientLight(0xffffff, 0.72));
+  const dir = new THREE.DirectionalLight(0xffffff, 1.1);
+  dir.position.set(-80, 120, 60); scene3.add(dir);
+  const fill = new THREE.DirectionalLight(0x3fb950, 0.18);
+  fill.position.set(80, 40, -60); scene3.add(fill);
+
+  // Ground
+  const gGeo = new THREE.PlaneGeometry(800, 800); gGeo.rotateX(-Math.PI/2);
+  groundPlane = new THREE.Mesh(gGeo, new THREE.MeshLambertMaterial({ color:0x111820 }));
+  scene3.add(groundPlane);
+
+  // Zone boundary plane (at mean rooftop height)
+  const zpGeo = new THREE.PlaneGeometry(600, 600); zpGeo.rotateX(-Math.PI/2);
+  zonePlane = new THREE.Mesh(zpGeo,
+    new THREE.MeshBasicMaterial({ color:0x58a6ff, transparent:true, opacity:.05, side:THREE.DoubleSide }));
+  zonePlane.position.y = ST.roofH;
+  scene3.add(zonePlane);
+
+  // Zone ring
+  const ringGeo = new THREE.RingGeometry(280, 283, 64); ringGeo.rotateX(-Math.PI/2);
+  const ring = new THREE.Mesh(ringGeo,
+    new THREE.MeshBasicMaterial({ color:0x58a6ff, transparent:true, opacity:.25, side:THREE.DoubleSide }));
+  ring.position.y = ST.roofH; scene3.add(ring);
+
+  // Build city (real data if available, mock otherwise)
+  if (ST.geoData) rebuildCity(ST.geoData);
+  else buildMockCity();
+
+  // Events
+  renderer3.domElement.addEventListener('mousemove', onThreeHover);
+  renderer3.domElement.addEventListener('mouseleave', () => {
+    document.getElementById('hoverReadout').classList.remove('visible');
+    if (windStick) windStick.visible = false;
+    hideStickLabels();
+  });
+  window.addEventListener('resize', resizeThree);
+  animate3();
+
+  // Update loading overlay
+  updateThreeOverlay();
+}
+
+function updateThreeOverlay() {
+  const overlay = document.getElementById('threeLoading');
+  if (!ST.simDone) return; // keep it
+  overlay.style.display = 'none';
+}
+
+// ── Speed colour for buildings (0–10 m/s range) ───
+function bldColor(exposure) {
+  const t = Math.min(1, exposure);
+  const [rv, gv, bv] = windColor(t * 0.85 + 0.05);
+  return (rv << 16) | (gv << 8) | bv;
+}
+
+// ── Real geometry ──────────────────────────────────
+function rebuildCity(data) {
+  // Clear old buildings
+  buildingMeshes.forEach(m => scene3.remove(m));
+  buildingMeshes = [];
+
+  const bs = data.buildings;
+  if (!bs || !bs.length) { buildMockCity(); return; }
+
+  // Compute scene centre
+  const allCx = bs.map(b => b.cx), allCy = bs.map(b => b.cy);
+  const cx = (Math.min(...allCx) + Math.max(...allCx)) / 2;
+  const cy = (Math.min(...allCy) + Math.max(...allCy)) / 2;
+
+  // Update mean rooftop height from real data
+  const meanH = bs.reduce((s, b) => s + b.height, 0) / bs.length;
+  ST.roofH = Math.round(meanH);
+  if (zonePlane) zonePlane.position.y = ST.roofH;
+
+  const botCol = new THREE.Color(0x111820);
+
+  bs.forEach(b => {
+    const geo = new THREE.BufferGeometry();
+    const raw = b.vertices;
+    const pos  = new Float32Array(raw.length);
+    const cols = new Float32Array(raw.length);
+    const topCol = new THREE.Color(bldColor(b.height / 35));
+
+    for (let i = 0; i < raw.length; i += 3) {
+      // SDK: X=east, Y=north, Z=height → Three.js: X, Y=height, Z=-north
+      pos[i]   = raw[i]   - cx;
+      pos[i+1] = raw[i+2];           // height → Y
+      pos[i+2] = -(raw[i+1] - cy);   // north → -Z
+
+      const t = Math.max(0, raw[i+2] / b.height);
+      const c = botCol.clone().lerp(topCol, Math.pow(t, 1.6));
+      cols[i] = c.r; cols[i+1] = c.g; cols[i+2] = c.b;
+    }
+
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color',    new THREE.Float32BufferAttribute(cols, 3));
+    geo.setIndex(b.indices);
+    geo.computeVertexNormals();
+
+    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors:true }));
+    mesh.userData = { height:b.height, bx: b.cx-cx, bz: -(b.cy-cy), bldData: b };
+    scene3.add(mesh);
+    buildingMeshes.push(mesh);
+  });
+  recolorBuildings();
+  applyHeatmapToGround();
+
+  // Trees
+  (data.trees || []).forEach(t => {
+    const tree = makeTree(t.x - cx, -(t.y - cy), t.h || 8, t.r || 3);
+    scene3.add(tree);
+  });
+
+  // Fit camera to scene
+  const sceneW = Math.max(...bs.map(b => b.maxX)) - Math.min(...bs.map(b => b.minX));
+  const sceneD = Math.max(...bs.map(b => b.maxY)) - Math.min(...bs.map(b => b.minY));
+  const dist   = Math.max(sceneW, sceneD) * 0.85;
+  camera3.position.set(dist*.7, dist*.55, dist*.7);
+  camera3.lookAt(0, ST.roofH * 0.6, 0);
+  controls3.target.set(0, ST.roofH * 0.4, 0);
+  controls3.update();
+
+  updateThreeOverlay();
+}
+
+// ── Fallback mock city ─────────────────────────────
+function buildMockCity() {
+  const BDATA = [
+    [-40,-40,20,18,30,.88],[-14,-40,16,18,22,.75],[14,-40,18,18,18,.65],[42,-40,16,18,38,.92],
+    [-40,-14,18,16,20,.70],[-14,-14,16,16,15,.52],[14,-14,18,16,24,.68],[42,-14,16,16,26,.72],
+    [-40, 14,18,18,16,.58],[-14, 14,16,18,12,.40],[14, 14,18,18,20,.44],[42, 14,16,18,28,.65],
+    [-40, 42,20,18,22,.60],[-14, 42,16,18,14,.38],[14, 42,18,18,16,.36],[42, 42,16,18,18,.55],
+  ];
+  const botCol = new THREE.Color(0x111820);
+  BDATA.forEach(([x, z, w, d, h, exp]) => {
+    const geo = new THREE.BoxGeometry(w, h, d);
+    const posA = geo.attributes.position;
+    const cols = [];
+    const topCol = new THREE.Color(bldColor(exp));
+    for (let i = 0; i < posA.count; i++) {
+      const t = (posA.getY(i) + h/2) / h;
+      const c = botCol.clone().lerp(topCol, Math.pow(Math.max(0,t), 1.5));
+      cols.push(c.r, c.g, c.b);
+    }
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors:true }));
+    mesh.position.set(x, h/2, z);
+    mesh.userData = { height:h, windExposure:exp, bx:x, bz:z };
+    scene3.add(mesh);
+    buildingMeshes.push(mesh);
+  });
+}
+
+// ── Tree mesh ───────────────────────────────────────
+function makeTree(x, z, h, r) {
+  const g = new THREE.Group();
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.25, 0.35, h * .45, 6),
+    new THREE.MeshLambertMaterial({ color:0x4a3020 }));
+  trunk.position.y = h * .225;
+  g.add(trunk);
+  const crown = new THREE.Mesh(
+    new THREE.SphereGeometry(r, 8, 6),
+    new THREE.MeshLambertMaterial({ color:0x2d7a3a, transparent:true, opacity:.88 }));
+  crown.position.y = h * .55 + r * .4;
+  g.add(crown);
+  g.position.set(x, 0, z);
+  return g;
+}
+
+// ── Animate ─────────────────────────────────────────
+function animate3() {
+  requestAnimationFrame(animate3);
+  controls3.update();
+  renderer3.render(scene3, camera3);
+}
+
+function resizeThree() {
+  if (!renderer3) return;
+  const c = document.getElementById('three-canvas');
+  renderer3.setSize(c.clientWidth, c.clientHeight, false);
+  if (camera3) { camera3.aspect = c.clientWidth / c.clientHeight; camera3.updateProjectionMatrix(); }
+}
+
+// ── Stick HTML labels ────────────────────────────────
+function updateStickLabels(profile) {
+  const container = document.getElementById('stick-labels');
+  container.style.display = 'block';
+  if (!stickLabelEls) {
+    container.innerHTML = '';
+    stickLabelEls = STICK_H_LABELS.map(() => {
+      const el = document.createElement('div');
+      el.className = 'ws-label';
+      container.appendChild(el);
+      return el;
+    });
+  }
+  const rect = renderer3.domElement.getBoundingClientRect();
+  const wp   = new THREE.Vector3();
+  windStick.userData.rings.forEach((ring, i) => {
+    const el = stickLabelEls[i];
+    const { spd } = profile[i];
+    ring.getWorldPosition(wp);
+    const ndc = wp.clone().project(camera3);
+    if (ndc.z > 1) { el.style.display = 'none'; return; }
+    const sx = (ndc.x *  0.5 + 0.5) * rect.width;
+    const sy = (ndc.y * -0.5 + 0.5) * rect.height;
+    const t  = Math.min(1, spd / 12);
+    const [rv, gv, bv] = windColor(t);
+    const col = `rgb(${rv},${gv},${bv})`;
+    el.style.left         = sx + 'px';
+    el.style.top          = sy + 'px';
+    el.style.display      = 'flex';
+    el.style.color        = col;
+    el.style.borderColor  = `rgba(${rv},${gv},${bv},.35)`;
+    el.innerHTML = `<span class="ws-lh">${STICK_H_LABELS[i]}</span>${spd.toFixed(1)} m/s`;
+  });
+}
+
+function hideStickLabels() {
+  const c = document.getElementById('stick-labels');
+  if (c) c.style.display = 'none';
+}
+
+// ── Wind stick (probe) ───────────────────────────────
+function makeWindStick() {
+  const grp = new THREE.Group();
+  const maxH = 80;
+
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.07, 0.07, maxH, 6),
+    new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0.2 })
+  );
+  pole.position.y = maxH / 2;
+  grp.add(pole);
+
+  // Zone boundary disc (sits at rooftop of hovered building)
+  const disc = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.2, 1.2, 0.08, 16),
+    new THREE.MeshBasicMaterial({ color:0x58a6ff, transparent:true, opacity:0.6 })
+  );
+  grp.userData.disc = disc;
+  grp.add(disc);
+
+  // 7 rings: 1.5m, 5m, 10m, roof, roof+3, roof+8, roof+30
+  const ringHeights = [1.5, 5, 10, 18, 21, 26, 48];
+  grp.userData.rings = ringHeights.map(h => {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.55, 0.09, 6, 16),
+      new THREE.MeshBasicMaterial({ color:0xaaaaaa, transparent:true, opacity:0.9 })
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = h;
+    grp.add(ring);
+    return ring;
+  });
+
+  return grp;
+}
+
+function updateWindStick(point, roofH) {
+  if (!windStick) { windStick = makeWindStick(); scene3.add(windStick); }
+  windStick.visible = true;
+  windStick.position.set(point.x, 0, point.z);
+  windStick.userData.disc.position.y = roofH;
+
+  const sm = SEASONS[ST.season].mult, dm = DIURNAL[ST.hour];
+  const base = ST.meanSpeed * sm * dm;
+  const keyH = [1.5, 5, 10, roofH, roofH + 3, roofH + 8, roofH + 30];
+
+  return windStick.userData.rings.map((ring, i) => {
+    const h = keyH[i];
+    ring.position.y = h;
+    const spd = h <= roofH
+      ? pl(base, ST.baseH, Math.max(1, h), ST.alpha)
+      : pl(pl(base, ST.baseH, roofH, ST.alpha), roofH, h, 0.12);
+    const t = Math.min(1, spd / 12);
+    const [rv, gv, bv] = windColor(t);
+    ring.material.color.setRGB(rv/255, gv/255, bv/255);
+    return { h, spd, zone: h <= roofH ? 1 : 2 };
+  });
+}
+
+// ── Hover ────────────────────────────────────────────
+function onThreeHover(e) {
+  const c    = renderer3.domElement;
+  const rect = c.getBoundingClientRect();
+  mouse3.x   =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+  mouse3.y   = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse3, camera3);
+
+  const hits = raycaster.intersectObjects([...buildingMeshes, groundPlane]);
+  if (!hits.length) {
+    document.getElementById('hoverReadout').classList.remove('visible');
+    if (windStick) windStick.visible = false;
+    hideStickLabels();
+    return;
+  }
+
+  const hit   = hits[0];
+  const roofH = hit.object !== groundPlane ? (hit.object.userData.height || ST.roofH) : ST.roofH;
+  const profile = updateWindStick(hit.point, roofH);
+  updateStickLabels(profile);
+
+  // Build profile HTML
+  const labels = [
+    { label:'1.5 m',         turb: null },
+    { label:'5 m  (lamppost)', turb:'lamppost' },
+    { label:'10 m',           turb: null },
+    { label:`${roofH.toFixed(0)} m — rooftop`, turb: null, divider:true },
+    { label:'+3 m  (VAWT)',   turb:'rooftop-vawt' },
+    { label:'+8 m  (HAWT)',   turb:'rooftop-hawt' },
+    { label:'+30 m (Comm.)',  turb:'community' },
+  ];
+
+  let html = '';
+  profile.forEach(({h, spd, zone}, i) => {
+    const meta = labels[i];
+    const t = Math.min(1, spd / 12);
+    const [rv, gv, bv] = windColor(t);
+    const col = `rgb(${rv},${gv},${bv})`;
+    const isActive = ST.turbineType && ST.turbineType === meta.turb;
+    const dividerHtml = meta.divider
+      ? `<div class="hr-divider-roof"></div>` : '';
+    html += `${dividerHtml}<div class="hr-profile-row" style="${isActive?'background:rgba(63,185,80,.1)':''}">
+      <span style="color:${zone===1?'var(--t2)':'rgba(88,166,255,.7)'}">${meta.label}</span>
+      <span style="color:${col};font-weight:700;font-size:11px">${spd.toFixed(1)} m/s</span>
+    </div>`;
+  });
+
+  const ro = document.getElementById('hoverReadout');
+  ro.classList.add('visible');
+  document.getElementById('hrProfile').innerHTML = html;
+  document.getElementById('hrSeason').textContent = SEASONS[ST.season].label;
+  document.getElementById('hrHour').textContent   = String(ST.hour).padStart(2,'0') + ':00';
+}
+
+function selectTurbine(type) {
+  ST.turbineType = type;
+  document.querySelectorAll('.tp-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.type === type));
+}
+
+function set3DSeason(s) {
+  ST.season = s;
+  document.querySelectorAll('.sn-btn').forEach(b => b.classList.toggle('active', b.dataset.s===s));
+}
+function setHour(v) {
+  ST.hour = parseInt(v);
+  document.getElementById('hourVal').textContent = String(v).padStart(2,'0') + ':00';
+}
+
+// ════════════════════════════════════════════════
+// TAB 3 — FEASIBILITY RESULTS
+// ════════════════════════════════════════════════
+let heightChart, roseChart, distChart;
+
+const RES_TURBINES = [
+  { id:'lp', key:'lamppost'     },
+  { id:'rv', key:'rooftop-vawt' },
+  { id:'rh', key:'rooftop-hawt' },
+  { id:'ch', key:'community'    },
+];
+
+function renderResultsTab(season) {
+  document.getElementById('noDataMsg').style.display     = 'none';
+  document.getElementById('resultsContent').style.display = 'block';
+  const s = SEASONS[season];
+  document.getElementById('sbarInfo').innerHTML = s.info;
+  document.getElementById('sbarInfo').classList.toggle('vis', season !== 'annual');
+
+  RES_TURBINES.forEach(rt => {
+    const spd  = hubSpeed(rt.key, ST.roofH, season, ST.hour);
+    const t    = TURBINES[rt.key];
+    const v    = verdict(spd, t.minSpd);
+    const dur  = spinDur(spd);
+    const card = document.getElementById('tc-' + rt.id);
+    card.className = 'tc ' + v.cls;
+    document.getElementById('spd-'+rt.id).innerHTML = spd.toFixed(1)+' <span class="tc-unit">m/s</span>';
+    document.getElementById('badge-'+rt.id).textContent = v.txt;
+    const rot = document.getElementById('rot-'+rt.id);
+    const vis = document.getElementById('vis-'+rt.id);
+    if (!dur) { rot.classList.add('stopped'); rot.style.removeProperty('--sd'); vis.classList.remove('glow'); }
+    else { rot.classList.remove('stopped'); rot.style.setProperty('--sd', dur.toFixed(2)+'s'); vis.classList.toggle('glow', spd>7); }
+    document.getElementById('ssvg-'+rt.id).textContent = spd.toFixed(1)+' m/s';
+    document.getElementById('ssvg-'+rt.id).style.color = s.color;
+    document.getElementById('slbl-'+rt.id).textContent = s.label.toLowerCase();
+  });
+
+  const tn = document.getElementById('terrainSel');
+  const tl = tn.options[tn.selectedIndex].text.split('(')[0].trim();
+  document.getElementById('alphaPill').innerHTML =
+    `📐 α = ${ST.alpha} · ${tl} · rooftop boundary ${ST.roofH} m`;
+
+  buildHeightChart(season);
+  if (!roseChart) buildRoseChart();
+  if (!distChart)  buildDistChart();
+}
+
+function setResultSeason(s) {
+  ST.season = s;
+  document.querySelectorAll('.sb-btn').forEach(b => b.classList.toggle('active', b.dataset.s===s));
+  if (ST.simDone) renderResultsTab(s);
+}
+
+function buildHeightChart(season) {
+  if (heightChart) heightChart.destroy();
+  const heights = [1.5,5,10,15,18,25,30,40,50,80];
+  const sm = SEASONS[season].mult;
+  const speeds = heights.map(h => {
+    if (h <= ST.roofH) return +pl(ST.meanSpeed*sm, ST.baseH, h, ST.alpha).toFixed(2);
+    const atRoof = pl(ST.meanSpeed*sm, ST.baseH, ST.roofH, ST.alpha);
+    return +pl(atRoof, ST.roofH, h, 0.12).toFixed(2);
+  });
+  const ctx = document.getElementById('heightChart').getContext('2d');
+  heightChart = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: heights.map(h => h+'m'),
+      datasets:[
+        { label:'Zone 1 (Infrared)', data: heights.map((h,i) => h<=ST.roofH?speeds[i]:null),
+          borderColor:'#3fb950', backgroundColor:'rgba(63,185,80,.08)',
+          borderWidth:2, fill:true, tension:0.4, spanGaps:false,
+          pointRadius: heights.map(h=>[5,10,18].includes(h)?5:2), pointBackgroundColor:'#3fb950' },
+        { label:'Zone 2 (EPW)',      data: heights.map((h,i) => h>=ST.roofH?speeds[i]:null),
+          borderColor:'#58a6ff', backgroundColor:'rgba(88,166,255,.06)',
+          borderWidth:2, fill:true, tension:0.4, spanGaps:false,
+          pointRadius: heights.map(h=>[18,30,50,80].includes(h)?5:2), pointBackgroundColor:'#58a6ff' },
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{labels:{color:'#8b949e',font:{size:10},boxWidth:12}},
+        tooltip:{backgroundColor:'#1c2128',borderColor:'#30363d',borderWidth:1,
+          titleColor:'#e6edf3',bodyColor:'#8b949e',callbacks:{label:c=>` ${c.raw} m/s`}} },
+      scales:{
+        x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#8b949e',font:{size:10}}},
+        y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#8b949e',font:{size:10},callback:v=>v+' m/s'}}
+      }
+    }
+  });
+}
+
+function buildRoseChart() {
+  const ctx = document.getElementById('roseChart').getContext('2d');
+  roseChart = new Chart(ctx, {
+    type:'polarArea',
+    data:{ labels:['N','NE','E','SE','S','SW','W','NW'],
+      datasets:[{ data:[8,4,3,5,7,9,11,19],
+        backgroundColor:['rgba(63,185,80,.5)','rgba(63,185,80,.3)','rgba(63,185,80,.2)',
+          'rgba(63,185,80,.3)','rgba(63,185,80,.4)','rgba(63,185,80,.5)',
+          'rgba(63,185,80,.6)','rgba(63,185,80,.75)'],
+        borderColor:'rgba(63,185,80,.3)', borderWidth:1 }] },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false},
+        tooltip:{backgroundColor:'#1c2128',borderColor:'#30363d',borderWidth:1,
+          titleColor:'#e6edf3',bodyColor:'#8b949e',callbacks:{label:c=>` ${c.raw}%`}} },
+      scales:{r:{grid:{color:'rgba(255,255,255,.06)'},ticks:{display:false},
+        pointLabels:{color:'#8b949e',font:{size:9}}}} }
+  });
+}
+
+function buildDistChart() {
+  const k=2.0, lam=ST.meanSpeed/0.8862;
+  const bins=[],vals=[];
+  for(let v=0;v<=16;v+=0.5){
+    bins.push(v.toFixed(1));
+    const pdf=v===0?0:(k/lam)*Math.pow(v/lam,k-1)*Math.exp(-Math.pow(v/lam,k));
+    vals.push(+(pdf*100).toFixed(3));
+  }
+  const ctx=document.getElementById('distChart').getContext('2d');
+  const g=ctx.createLinearGradient(0,0,0,150);
+  g.addColorStop(0,'rgba(88,166,255,.4)'); g.addColorStop(1,'rgba(88,166,255,0)');
+  distChart=new Chart(ctx,{
+    type:'line',
+    data:{labels:bins,datasets:[{data:vals,borderColor:'#58a6ff',backgroundColor:g,
+      borderWidth:1.5,fill:true,tension:0.4,pointRadius:0}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{backgroundColor:'#1c2128',borderColor:'#30363d',
+        borderWidth:1,titleColor:'#e6edf3',bodyColor:'#8b949e',
+        callbacks:{title:c=>c[0].label+' m/s',label:c=>` ${c.raw}%`}}},
+      scales:{x:{grid:{display:false},ticks:{color:'#8b949e',font:{size:9},maxTicksLimit:6}},
+        y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{display:false}}}}
+  });
+}
+
+// Restore saved tokens
+(function() {
+  const mb = localStorage.getItem('mapboxToken');
+  const ci = localStorage.getItem('cesiumToken');
+  if (mb) document.getElementById('mapboxTokenInput').value = mb;
+  if (ci) document.getElementById('cesiumTokenInput').value = ci;
+})();
+
+function onMapboxTokenChange(v) { if (v.startsWith('pk.')) localStorage.setItem('mapboxToken', v); }
+function onCesiumTokenChange(v) { if (v.length > 10) localStorage.setItem('cesiumToken', v); }
+
+// Expose shared state for the module script (modules run after regular scripts)
+window._ws = {
+  get ST()       { return ST; },
+  SEASONS, DIURNAL, TURBINES, pl, windColor, gridToCanvas, showToast,
+};
+
+// initMap2 / setMap2Season / setMap2Hour / addHeatmapToMap2 are defined in the module script below
+function initMap2() { window._initMap2 && window._initMap2(); }
+function setMap2Season(s) { window._setMap2Season && window._setMap2Season(s); }
+function setMap2Hour(v)   { window._setMap2Hour   && window._setMap2Hour(v); }
+function addHeatmapToMap2() { window._addHeatmap2 && window._addHeatmap2(); }
+
+</script>
+
+<!-- ══ TAB 4 MODULE — deck.gl + Cesium Ion ══════════════════ -->
+<script type="module">
+import { MapboxOverlay }                        from '@deck.gl/mapbox';
+import { Tile3DLayer }                          from '@deck.gl/geo-layers';
+import { BitmapLayer, SolidPolygonLayer }       from '@deck.gl/layers';
+import { MaskExtension }                        from '@deck.gl/extensions';
+import { Tiles3DLoader }                        from '@loaders.gl/3d-tiles';
+
+// ── Shared state bridge ──────────────────────────────────────
+const ws = () => window._ws;
+
+// ── Module state ─────────────────────────────────────────────
+let map2       = null;
+let overlay    = null;   // MapboxOverlay (interleaved)
+let tilesetUrl = null;   // cached once per session (§2.3)
+let liftM      = 0;      // height offset — photogrammetric ground
+let m2Season   = 'annual', m2Hour = 12;
+let m2Marker   = null;
+
+// ── §2.1 — Resolve Cesium Ion tileset URL once ──────────────
+async function resolveTileset(ionToken) {
+  if (tilesetUrl) return tilesetUrl;
+  const r = await fetch('https://api.cesium.com/v1/assets/2275207/endpoint', {
+    headers: { Authorization: `Bearer ${ionToken}` },
+  });
+  if (!r.ok) throw new Error(`Cesium Ion ${r.status} — check token`);
+  const d = await r.json();
+  tilesetUrl = d.options?.url ?? d.url;
+  if (!tilesetUrl) throw new Error('Cesium Ion: missing tileset URL');
+  return tilesetUrl;
+}
+
+// ── §4.1 — Uniform Z-lift from Mapbox DEM ───────────────────
+async function fetchLift(lon, lat, mbToken) {
+  const z = 14, sz = 512, n = 2 ** z;
+  const wx = ((lon + 180) / 360) * n * sz;
+  const lr = lat * Math.PI / 180;
+  const wy = ((1 - Math.log(Math.tan(lr) + 1 / Math.cos(lr)) / Math.PI) / 2) * n * sz;
+  const tx = Math.floor(wx / sz), ty = Math.floor(wy / sz);
+  const px = Math.floor(wx - tx * sz), py = Math.floor(wy - ty * sz);
+  try {
+    const res = await fetch(
+      `https://api.mapbox.com/v4/mapbox.mapbox-terrain-dem-v1/${z}/${tx}/${ty}@2x.pngraw?access_token=${mbToken}`
+    );
+    if (!res.ok) return 45;
+    const bmp = await createImageBitmap(await res.blob());
+    const oc = new OffscreenCanvas(bmp.width, bmp.height);
+    const ctx = oc.getContext('2d'); ctx.drawImage(bmp, 0, 0);
+    const sx = Math.min(bmp.width-1,  Math.floor(px * bmp.width  / sz));
+    const sy = Math.min(bmp.height-1, Math.floor(py * bmp.height / sz));
+    const d  = ctx.getImageData(sx, sy, 1, 1).data;
+    const ortho = -10000 + (d[0]*65536 + d[1]*256 + d[2]) * 0.1;
+    return ortho + 47.5 - 2;   // +47.5 = geoid undulation (Barcelona, EGM2008); -2 = just under mesh
+  } catch { return 45; }
+}
+
+// ── §5.1 — Colorise grid → ImageData ────────────────────────
+function gridToImage(grid, minV, maxV) {
+  const { windColor } = ws();
+  const rows = grid.length, cols = grid[0].length;
+  const data = new Uint8ClampedArray(cols * rows * 4);
+  for (let r = 0; r < rows; r++) {
+    const srcRow = grid[rows - 1 - r]; // Infrared row 0 = south → flip
+    for (let c = 0; c < cols; c++) {
+      const v = srcRow[c];
+      const i = (r * cols + c) * 4;
+      if (v === null || v === undefined) { data[i+3] = 0; continue; }
+      const t = Math.max(0, Math.min(1, (v - minV) / (maxV - minV)));
+      const [rv, gv, bv] = windColor(t);
+      data[i]=rv; data[i+1]=gv; data[i+2]=bv; data[i+3]=210;
+    }
+  }
+  return new ImageData(data, cols, rows);
+}
+
+// ── Build / update deck.gl layers ────────────────────────────
+function buildLayers(url) {
+  const ST    = ws().ST;
+  const simD  = ST.simData;
+
+  // §3 — Study area boundary polygon for MaskExtension cutout
+  const boundary = simD ? [
+    [simD.bounds.sw[1], simD.bounds.ne[0]],
+    [simD.bounds.ne[1], simD.bounds.ne[0]],
+    [simD.bounds.ne[1], simD.bounds.sw[0]],
+    [simD.bounds.sw[1], simD.bounds.sw[0]],
+  ] : null;
+
+  // column-major modelMatrix for Z lift (§4.1)
+  const mm = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,liftM,1];
+
+  const layers = [];
+
+  // Hidden mask layer (never rendered, feeds MaskExtension)
+  if (boundary) {
+    layers.push(new SolidPolygonLayer({
+      id: 'cutout-mask',
+      operation: 'mask',
+      data: [{ polygon: boundary }],
+      getPolygon: d => d.polygon,
+    }));
+  }
+
+  // §2.2 — Google Photorealistic 3D Tiles
+  layers.push(new Tile3DLayer({
+    id: 'g3d',
+    data: url,
+    loader: Tiles3DLoader,
+    opacity: 1,
+    pickable: false,
+    loadOptions: {
+      tileset: {
+        maximumScreenSpaceError: 12,
+        maximumMemoryUsage: 512,
+        maxRequests: 16,
+        debounceTime: 80,
+      },
+    },
+    ...(boundary ? {
+      extensions:   [new MaskExtension()],
+      maskId:       'cutout-mask',
+      maskInverted: true,           // cut hole inside study area → show heatmap
+    } : {}),
+  }));
+
+  // §5.1 — Infrared heatmap as BitmapLayer (recipe §6 order: after tiles, before indicators)
+  if (simD) {
+    const { grid, bounds, minLegend, maxLegend } = simD;
+    const minV = minLegend ?? 0, maxV = maxLegend ?? 10;
+    const img  = gridToImage(grid, minV, maxV);
+    const sw = bounds.sw, ne = bounds.ne;  // [lat, lon]
+    layers.push(new BitmapLayer({
+      id:     'infrared-bitmap',
+      image:  img,
+      bounds: [sw[1], sw[0], ne[1], ne[0]],  // BitmapLayer: [W, S, E, N]
+      opacity: 0.75,
+      modelMatrix: mm,
+      parameters: { depthTest: true },
+    }));
+
+    updateLegend(minV, maxV);
+  }
+
+  return layers;
+}
+
+// ── Legend ───────────────────────────────────────────────────
+function updateLegend(minV, maxV) {
+  const el = document.getElementById('heatLegendMap2');
+  el.style.display = 'block';
+  const bar = document.getElementById('legendBarMap2');
+  bar.width = bar.offsetWidth || 160;
+  const ctx = bar.getContext('2d');
+  const grd = ctx.createLinearGradient(0, 0, bar.width, 0);
+  for (let i = 0; i <= 20; i++) {
+    const [r, g, b] = ws().windColor(i / 20);
+    grd.addColorStop(i / 20, `rgb(${r},${g},${b})`);
+  }
+  ctx.fillStyle = grd; ctx.fillRect(0, 0, bar.width, bar.height);
+  document.getElementById('legMinMap2').textContent = minV.toFixed(1);
+  document.getElementById('legMidMap2').textContent = ((minV+maxV)/2).toFixed(1);
+  document.getElementById('legMaxMap2').textContent = maxV.toFixed(1) + ' m/s';
+}
+
+// ── Wind profile hover panel ─────────────────────────────────
+function onMap2Hover(e) {
+  const { ST, SEASONS, DIURNAL, pl, windColor } = ws();
+  if (!ST.simDone) return;
+
+  const roofH = ST.roofH;
+  const sm = SEASONS[m2Season].mult, dm = DIURNAL[m2Hour];
+  const base = ST.meanSpeed * sm * dm;
+
+  const rows = [
+    { h: 1.5,       label: '1.5 m',            zone: 1 },
+    { h: 5,         label: '5 m  (lamppost)',   zone: 1 },
+    { h: 10,        label: '10 m',              zone: 1 },
+    { h: roofH,     label: `${roofH} m — roof`, zone: 1, divider: true },
+    { h: roofH+3,   label: '+3 m  (VAWT)',      zone: 2 },
+    { h: roofH+8,   label: '+8 m  (HAWT)',      zone: 2 },
+    { h: roofH+30,  label: '+30 m (Comm.)',     zone: 2 },
+  ];
+
+  if (!m2Marker) {
+    const el = document.createElement('div');
+    el.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#3fb950;' +
+      'border:2px solid #fff;box-shadow:0 0 8px rgba(63,185,80,.6);pointer-events:none';
+    m2Marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+      .setLngLat(e.lngLat).addTo(map2);
+  } else { m2Marker.setLngLat(e.lngLat); }
+
+  let html = '';
+  rows.forEach(({ h, label, zone, divider }) => {
+    const spd = h <= roofH
+      ? pl(base, ST.baseH, Math.max(1, h), ST.alpha)
+      : pl(pl(base, ST.baseH, roofH, ST.alpha), roofH, h, 0.12);
+    const [rv, gv, bv] = windColor(Math.min(1, spd / 12));
+    const col = `rgb(${rv},${gv},${bv})`;
+    const div = divider ? `<div class="hr-divider-roof"></div>` : '';
+    html += `${div}<div class="hr-profile-row">
+      <span style="color:${zone===1?'var(--t2)':'rgba(88,166,255,.75)'}">${label}</span>
+      <span style="color:${col};font-weight:700;font-size:11px">${spd.toFixed(1)} m/s</span>
+    </div>`;
+  });
+
+  const ro = document.getElementById('hoverReadoutMap2');
+  ro.classList.add('visible');
+  document.getElementById('hrProfileMap2').innerHTML = html;
+  document.getElementById('hrSeasonMap2').textContent = ws().SEASONS[m2Season].label;
+  document.getElementById('hrHourMap2').textContent   = String(m2Hour).padStart(2,'0') + ':00';
+}
+
+// ── Public API exposed to non-module script stubs ─────────────
+window._initMap2 = async function() {
+  const mbToken  = (document.getElementById('mapboxTokenInput').value  || '').trim();
+  const ionToken = (document.getElementById('cesiumTokenInput').value  || '').trim();
+  const { showToast } = ws();
+
+  if (!mbToken.startsWith('pk.'))  { showToast('Enter a valid Mapbox token (pk.…)');       return; }
+  if (!ionToken)                    { showToast('Enter your Cesium Ion token');              return; }
+
+  if (map2) {
+    // Already initialized — rebuild layers with fresh sim data
+    if (overlay) overlay.setProps({ layers: buildLayers(tilesetUrl) });
+    return;
+  }
+
+  mapboxgl.accessToken = mbToken;
+  const center = ws().ST.geoData
+    ? [ws().ST.geoData.swLon + 0.002, ws().ST.geoData.swLat + 0.002]
+    : [2.162, 41.392];
+
+  map2 = new mapboxgl.Map({
+    container: 'map2',
+    style:     'mapbox://styles/mapbox/dark-v11',
+    center, zoom: 15.2, pitch: 55, bearing: -20, antialias: true,
+  });
+  map2.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'bottom-right');
+
+  map2.on('load', async () => {
+    // Disable Mapbox's own 3D buildings — they z-fight with Google mesh
+    ['building-extrusion','building'].forEach(id => {
+      if (map2.getLayer(id)) map2.setLayoutProperty(id, 'visibility', 'none');
+    });
+
+    try {
+      const [url, lift] = await Promise.all([
+        resolveTileset(ionToken),
+        fetchLift(center[0], center[1], mbToken),
+      ]);
+      tilesetUrl = url;
+      liftM = lift;
+
+      // §1 — MapboxOverlay with interleaved:true for correct depth compositing
+      overlay = new MapboxOverlay({ interleaved: true, layers: buildLayers(url) });
+      map2.addControl(overlay);
+
+      document.getElementById('map2Badge').style.display = 'block';
+    } catch (err) {
+      showToast('⚠️ ' + err.message);
+      console.error(err);
+    }
+  });
+
+  map2.on('mousemove', onMap2Hover);
+  map2.on('mouseleave', () =>
+    document.getElementById('hoverReadoutMap2').classList.remove('visible'));
+};
+
+window._addHeatmap2 = function() {
+  if (overlay && tilesetUrl) overlay.setProps({ layers: buildLayers(tilesetUrl) });
+};
+
+window._setMap2Season = function(s) {
+  m2Season = s;
+  ws().ST.season = s;
+  document.querySelectorAll('[data-sm]').forEach(b =>
+    b.classList.toggle('active', b.dataset.sm === s));
+};
+
+window._setMap2Hour = function(v) {
+  m2Hour = parseInt(v);
+  ws().ST.hour = m2Hour;
+  document.getElementById('hourValMap2').textContent = String(v).padStart(2,'0') + ':00';
+};
+</script>
+</body>
+</html>
