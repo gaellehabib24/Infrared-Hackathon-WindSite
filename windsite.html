@@ -1022,7 +1022,7 @@ async function runSimulation() {
   document.getElementById('runLbl').textContent = 'Simulating…';
 
   ST.alpha = parseFloat(document.getElementById('terrainSel').value);
-  ST.baseH = 10;          // fixed — Infrared reference height
+  ST.baseH = 1.5;         // Infrared simulates at pedestrian height (~1.5 m AGL)
   const ws = 10;          // fixed — CFD reference speed; EPW scales the result
   const wd = parseInt(document.getElementById('windDirSel').value);
   const polygon = getActivePolygon();
@@ -1721,58 +1721,56 @@ function placePinAt(hit) {
   const sm = SEASONS[ST.season].mult, dm = DIURNAL[ST.hour];
   const base = localSpd * sm * dm;
 
-  // Pick the turbine with highest hub speed (fall back to rooftop-vawt if no sim data yet)
-  let bestType = 'rooftop-vawt', bestSpd = 0;
-  for (const [type, t] of Object.entries(TURBINES)) {
+  // Assess ALL four turbine types at this location
+  const verdictColors = { high: 0x58e07a, ok: 0x3fb950, marg: 0xd29922, no: 0xf85149 };
+  const results = Object.entries(TURBINES).map(([type, t]) => {
     const hubH = t.aboveRoof ? bldH + t.hubAboveRoof : t.hubAGL;
     const spd = hubH <= ST.roofH
-      ? pl(base, ST.baseH, Math.max(1, hubH), ST.alpha)
+      ? pl(base, ST.baseH, Math.max(ST.baseH, hubH), ST.alpha)
       : pl(pl(base, ST.baseH, ST.roofH, ST.alpha), ST.roofH, hubH, 0.12);
-    if (spd >= bestSpd) { bestSpd = spd; bestType = type; }
-  }
-  const t = TURBINES[bestType];
-  const hubH = t.aboveRoof ? bldH + t.hubAboveRoof : t.hubAGL;
-  const v = verdict(bestSpd, t.minSpd);
+    const v = verdict(spd, t.minSpd);
+    return { type, t, hubH, spd, v };
+  });
 
-  const idx = placedPins.length + 1;
-  const grp = new THREE.Group();
+  const maxHubH = Math.max(...results.map(r => r.hubH));
+  const idx     = placedPins.length + 1;
+  const grp     = new THREE.Group();
   grp.position.set(hit.point.x, 0, hit.point.z);
 
-  // Pin post
-  const postH = hubH;
-  const [pr, pg, pb] = windColor(Math.min(1, bestSpd / 12));
-  const pinColor = (pr << 16) | (pg << 8) | pb;
+  // Thin post up to highest hub
   const post = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.15, 0.15, postH, 8),
-    new THREE.MeshLambertMaterial({ color: pinColor })
+    new THREE.CylinderGeometry(0.08, 0.08, maxHubH, 6),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 })
   );
-  post.position.y = postH / 2;
+  post.position.y = maxHubH / 2;
   grp.add(post);
 
-  // Hub disc
-  const hub = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.2, 1.2, 0.25, 16),
-    new THREE.MeshLambertMaterial({ color: pinColor, transparent: true, opacity: 0.85 })
-  );
-  hub.position.y = hubH;
-  grp.add(hub);
+  // One ring per turbine type at its hub height, colored by verdict
+  results.forEach(r => {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.9, 0.14, 6, 16),
+      new THREE.MeshBasicMaterial({ color: verdictColors[r.v.cls] })
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = r.hubH;
+    grp.add(ring);
+  });
 
-  // Number label (sprite)
-  const labelCanvas = document.createElement('canvas');
-  labelCanvas.width = 64; labelCanvas.height = 64;
-  const lctx = labelCanvas.getContext('2d');
-  lctx.fillStyle = `rgb(${pr},${pg},${pb})`;
+  // Number sprite at top
+  const lc = document.createElement('canvas');
+  lc.width = 64; lc.height = 64;
+  const lctx = lc.getContext('2d');
+  lctx.fillStyle = '#ffffff';
   lctx.beginPath(); lctx.arc(32, 32, 28, 0, Math.PI * 2); lctx.fill();
   lctx.fillStyle = '#0d1117'; lctx.font = 'bold 28px sans-serif';
   lctx.textAlign = 'center'; lctx.textBaseline = 'middle';
   lctx.fillText(idx, 32, 32);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(labelCanvas) }));
-  sprite.position.y = hubH + 3; sprite.scale.set(4, 4, 1);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(lc) }));
+  sprite.position.y = maxHubH + 3; sprite.scale.set(4, 4, 1);
   grp.add(sprite);
 
   scene3.add(grp);
-  const pinData = { idx, grp, bldH, hubH, bestSpd, bestType, verdict: v, localSpd };
-  placedPins.push(pinData);
+  placedPins.push({ idx, grp, bldH, results, localSpd });
   renderPinList();
 }
 
@@ -1796,18 +1794,22 @@ function renderPinList() {
     el.innerHTML = '<div style="font-size:10px;color:var(--t3);padding:4px 0">No pins placed yet — enable placement mode and click a rooftop or street.</div>';
     return;
   }
+  const vcol = { high:'#58e07a', ok:'#3fb950', marg:'#d29922', no:'#f85149' };
   el.innerHTML = placedPins.map(p => {
-    const t = TURBINES[p.bestType];
-    const [pr, pg, pb] = windColor(Math.min(1, p.bestSpd / 12));
-    const col = `rgb(${pr},${pg},${pb})`;
-    return `<div style="background:var(--bg2);border:1px solid var(--br);border-radius:5px;padding:7px 9px;margin-bottom:5px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-        <span style="font-size:10px;font-weight:700;color:${col}">Pin ${p.idx}</span>
+    const rows = p.results.map(r =>
+      `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid var(--br2)">
+        <span style="font-size:9px;color:var(--t2)">${r.t.label}</span>
+        <span style="font-size:9px;color:var(--t2)">${r.hubH.toFixed(0)} m</span>
+        <span style="font-size:10px;font-weight:700;color:${vcol[r.v.cls]}">${r.spd.toFixed(1)} m/s</span>
+        <span style="font-size:9px;color:${vcol[r.v.cls]}">${r.v.txt}</span>
+      </div>`
+    ).join('');
+    return `<div style="background:var(--bg2);border:1px solid var(--br);border-radius:5px;padding:7px 9px;margin-bottom:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:10px;font-weight:700;color:var(--t1)">Pin ${p.idx} · ${SEASONS[ST.season].label}</span>
         <button onclick="removePinAt(${p.idx})" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:11px;padding:0">✕</button>
       </div>
-      <div style="font-size:10px;color:var(--t2)">${t.label}</div>
-      <div style="font-size:14px;font-weight:700;color:${col}">${p.bestSpd.toFixed(1)} <span style="font-size:9px;font-weight:400">m/s at ${p.hubH.toFixed(0)} m</span></div>
-      <div style="font-size:9px;padding:2px 5px;border-radius:10px;display:inline-block;margin-top:3px;background:rgba(${pr},${pg},${pb},.12);color:${col}">${p.verdict.txt}</div>
+      ${rows}
     </div>`;
   }).join('');
 }
