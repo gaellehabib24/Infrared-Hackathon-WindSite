@@ -1,68 +1,114 @@
 # WindSite — Urban Wind Turbine Feasibility Analyzer
 
-A tool for analyzing urban sites for small wind turbine installation feasibility, built for the **Infrared SDK Hackathon** at IAAC Barcelona.
+A tool for identifying viable locations for small wind turbines in urban areas, built for the **Infrared SDK Hackathon** at IAAC Barcelona.
 
 ![WindSite](https://img.shields.io/badge/Infrared-SDK-blue) ![Python](https://img.shields.io/badge/Python-3.13-green) ![FastAPI](https://img.shields.io/badge/FastAPI-0.136-teal)
 
 ---
 
-## What it does
+## The idea
 
-WindSite takes a drawn polygon on a map, runs a CFD wind simulation via the [Infrared SDK](https://infrared.city), and produces a location-specific feasibility assessment for four turbine installation types — all in a single browser tab.
+Urban wind is not uniform. A rooftop two blocks away from another can receive 40% more wind simply because of how surrounding buildings channel or block the flow. EPW climate files give you one number for an entire city — they tell you nothing about specific locations.
 
-### Four turbine types assessed
+WindSite combines two data sources:
 
-| Type | Hub height | Min viable wind |
+- **Infrared SDK** — runs a CFD simulation over the actual 3D urban geometry and returns a spatial grid showing how buildings modify wind at every point in the site.
+- **EPW climate data** — provides real seasonal wind speeds for Barcelona, grounding the simulation in actual climate conditions.
+
+Together, they produce location-specific, seasonally-calibrated wind feasibility assessments.
+
+---
+
+## Methodology
+
+### Wind speed at each location
+
+Infrared simulates wind flow at a fixed **10 m/s reference speed**. This gives a spatial exposure map — each cell shows what fraction of the incoming wind reaches that point:
+
+```
+exposure_factor = infrared_grid_value / 10.0
+```
+
+This factor is a property of the urban geometry, not the input speed (CFD scales linearly at these velocities). It is then scaled by real climate data:
+
+```
+realistic_local_speed = exposure_factor × EPW_seasonal_mean
+```
+
+EPW Barcelona seasonal means used:
+
+| Season | Mean wind speed |
+|---|---|
+| Annual | 3.5 m/s |
+| Winter | 4.2 m/s |
+| Spring | 3.7 m/s |
+| Summer | 2.8 m/s |
+| Autumn | 3.4 m/s |
+
+### Height extrapolation — two-zone model
+
+Wind behaves differently below and above rooftop height:
+
+```
+┌──────────────────────────────────────────┐
+│  Zone 2 — Above rooftop                  │
+│  Free-field conditions · α = 0.12        │
+├──────────────────────────────────────────┤  ← mean rooftop height
+│  Zone 1 — Ground → rooftop               │
+│  Urban canyon effects · Infrared-driven  │
+│  Power law · α = 0.22–0.28               │
+└──────────────────────────────────────────┘
+```
+
+Formula: `V(h2) = V(h1) × (h2 / h1)^α`
+
+### Turbine types assessed
+
+| Type | Hub height | Min viable speed |
 |---|---|---|
 | Lamppost VAWT | 5 m (street level) | 5.0 m/s |
 | Rooftop VAWT | rooftop + 3 m | 3.5 m/s |
 | Rooftop HAWT | rooftop + 8 m | 4.5 m/s |
 | Community HAWT | rooftop + 30 m | 5.5 m/s |
 
-### Two-zone wind model
+### Hackathon simplification
 
-Wind behaviour changes fundamentally at rooftop height:
+Ideally, the analysis would run Infrared for multiple wind directions (e.g. all 8 compass directions), weight each result by its frequency from the EPW wind rose, and sum them into a direction-weighted annual exposure map. This would account for the fact that a sheltered courtyard in NW wind might be fully exposed in SE wind.
 
-```
-┌──────────────────────────────────────────┐
-│  Zone 2 — Above rooftop                  │
-│  Free-field · EPW weather file · α=0.12  │
-├──────────────────────────────────────────┤  ← mean rooftop height
-│  Zone 1 — Ground → rooftop               │
-│  Urban canyon effects · Infrared SDK     │
-│  Power law · α=0.22 suburban / 0.28 dense│
-└──────────────────────────────────────────┘
-```
-
-Extrapolation: `V(h2) = V(h1) × (h2/h1)^α`
+For this hackathon, we run a **single user-selected direction** and scale by the omnidirectional EPW seasonal mean. The result is best read as: *"when wind comes from this direction, which locations are viable?"* — rather than a full annual average. NW is the dominant direction for Barcelona (Tramontana/Mestral, ~34% frequency), making it the most representative single scenario.
 
 ---
 
-## Tabs
+## How to use
 
-### 1 — Infrared Simulation
-- Draw a polygon (or use the default Barcelona Eixample area)
-- Set wind speed, direction, terrain roughness
-- Runs a real CFD simulation via the Infrared SDK
-- Shows the wind speed heatmap overlaid on the map with a color legend
-- Extracts mean/peak speed and displays the two-zone pipeline
+### 1 — Infrared Simulation tab
 
-### 2 — 3D Explore
-- Real building geometry fetched from the Infrared SDK
-- Buildings colored by wind speed at **Ground / Mid / Roof** level (from the actual simulation grid)
-- **Wind stick probe**: hover over any building to see the speed at 7 heights simultaneously (1.5 m → rooftop+30 m), with floating color-coded labels
-- Season and time-of-day sliders apply seasonal multipliers and diurnal profiles
-- Infrared simulation heatmap draped on the 3D ground
+- Draw a polygon on the map, or use the default Barcelona Eixample area
+- Select wind direction and terrain roughness (α)
+- Click **Run Infrared Simulation**
+- The heatmap shows the raw CFD exposure pattern from Infrared
+- The stats panel shows EPW-scaled realistic speeds for the selected season
 
-### 3 — Feasibility
-- Animated turbine cards for each type, spinning at speed proportional to hub wind
-- Seasonal breakdown (Winter +30%, Summer −28%, etc.)
-- Height profile chart (two-zone model), wind rose, Weibull distribution
+### 2 — 3D Explore tab
 
-### 4 — 3D Map *(requires Mapbox + Cesium Ion tokens)*
-- Google Photorealistic 3D Tiles via Cesium Ion (recipe: deck.gl `Tile3DLayer`)
-- Infrared heatmap draped at photogrammetric ground level via `BitmapLayer` + height offset
-- Study area cutout using `MaskExtension`
+- Explore the site in 3D with real building geometry from the Infrared SDK
+- Hover over any building or street to see the **wind stick** — speeds at 7 heights from 1.5 m to rooftop+30 m, EPW-scaled and color-coded
+- Use **Show Feasible Rooftops** to place mini turbines on buildings that clear the feasibility threshold
+- Use **Show Wind Corridors** to highlight street-level zones above 5 m/s, suitable for lamppost VAWTs
+- Use **Place Turbine Pin** to click a specific location and get a detailed feasibility card
+- The **Top Rooftops** ranked list sorts all buildings by rooftop wind speed
+
+### 3 — Feasibility tab
+
+- Overview of all four turbine types for the simulated site
+- Season selector shows how the real EPW seasonal mean shifts feasibility
+- Height profile chart shows the two-zone extrapolation
+- Animated turbines spin proportionally to hub speed
+
+### 4 — 3D Map tab *(requires Mapbox + Cesium Ion tokens)*
+
+- Google Photorealistic 3D Tiles via Cesium Ion
+- Infrared heatmap draped on the photogrammetric ground
 - Wind profile panel on hover
 
 ---
@@ -71,11 +117,12 @@ Extrapolation: `V(h2) = V(h1) × (h2/h1)^α`
 
 | Component | Technology |
 |---|---|
-| Wind CFD simulation | [Infrared SDK](https://infrared.city) (`infrared-sdk` 0.4.9) |
+| Wind CFD | [Infrared SDK](https://infrared.city) `infrared-sdk 0.4.9` |
+| Climate data | EPW Barcelona (climate.onebuilding.org) |
 | Backend | Python · FastAPI · uvicorn |
 | 2D map | Leaflet.js + Leaflet.draw |
-| 3D scene | Three.js r128 + OrbitControls |
-| 3D photorealistic map | Mapbox GL JS + deck.gl + Cesium Ion |
+| 3D scene | Three.js r128 |
+| 3D photorealistic | Mapbox GL JS + deck.gl + Cesium Ion |
 | Charts | Chart.js 4.4 |
 
 ---
@@ -83,27 +130,27 @@ Extrapolation: `V(h2) = V(h1) × (h2/h1)^α`
 ## Setup
 
 ### Requirements
+
 - Python 3.10+
 - An [Infrared API key](https://infrared.city)
 
 ### Install
 
 ```bash
-# Create and activate virtual environment
 python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # macOS/Linux
+.venv\Scripts\activate          # Windows
+# source .venv/bin/activate     # macOS / Linux
 
-# Install dependencies
 pip install infrared-sdk fastapi uvicorn numpy pydantic
 ```
 
 ### Run
 
 ```bash
-# Set your Infrared API key
-$env:INFRARED_API_KEY = 'your-key-here'   # PowerShell
-# export INFRARED_API_KEY='your-key-here' # bash
+# Set your Infrared API key (required before starting the server)
+set INFRARED_API_KEY=your-key-here          # Windows CMD
+# $env:INFRARED_API_KEY = 'your-key-here'  # PowerShell
+# export INFRARED_API_KEY='your-key-here'  # bash
 
 # Start the server
 .venv\Scripts\python server.py
@@ -112,27 +159,27 @@ $env:INFRARED_API_KEY = 'your-key-here'   # PowerShell
 # http://localhost:8000
 ```
 
-The server caches simulation results in `./cache/` so repeated runs on the same polygon are instant.
+Simulation results are cached in `./cache/` — re-running the same polygon and direction is instant.
 
-### Optional: pre-fetch geometry
+### Optional: pre-fetch building geometry
 
 ```bash
 .venv\Scripts\python fetch_geometry.py
 ```
 
-Fetches and caches building geometry for the default Barcelona Eixample polygon before the demo, so the 3D scene loads immediately.
+Downloads and caches building geometry for the default Barcelona Eixample polygon so the 3D scene loads immediately without an API call.
 
 ---
 
-## Key files
+## Files
 
 | File | Purpose |
 |---|---|
-| `windsite.html` | Single-page frontend (all four tabs) |
+| `windsite.html` | Single-page frontend — all four tabs |
 | `server.py` | FastAPI backend wrapping the Infrared SDK |
 | `fetch_geometry.py` | Standalone geometry pre-fetcher |
-| `CONTEXT.md` | Architecture notes — two-zone model, pipeline |
-| `infrared-sdk-deckgl-recipe.md` | Recipe used for the 3D Map tab |
+| `CONTEXT.md` | Architecture notes — two-zone model, full pipeline |
+| `infrared-sdk-deckgl-recipe.md` | deck.gl + Cesium Ion recipe used for Tab 4 |
 
 ---
 

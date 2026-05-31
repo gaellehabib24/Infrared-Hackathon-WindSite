@@ -303,6 +303,9 @@ input[type=range]{width:100%;margin-top:6px;accent-color:var(--g);background:var
 .hl-bar{width:100%;height:8px;border-radius:3px;display:block}
 .hl-ticks{display:flex;justify-content:space-between;margin-top:4px;font-size:9px;color:var(--t2)}
 
+/* Analysis buttons active state */
+.run-btn.analysis-active{background:var(--gdim) !important;color:var(--g) !important;border-color:var(--g) !important}
+
 /* Wind-probe hover readout */
 .hr-profile-row{display:flex;justify-content:space-between;align-items:center;
   padding:2px 4px;margin:1px 0;border-radius:3px;font-size:10px}
@@ -355,7 +358,7 @@ input[type=range]{width:100%;margin-top:6px;accent-color:var(--g);background:var
     <div id="map"></div>
     <div class="map-hint" id="mapHint">✏️ Draw a polygon — or use the pre-loaded Eixample area</div>
     <div class="heatmap-legend" id="heatLegend">
-      <div class="hl-title">Wind Speed · m/s · ground level</div>
+      <div class="hl-title">Infrared CFD · m/s · 10 m/s ref</div>
       <canvas class="hl-bar" id="legendBar" height="8"></canvas>
       <div class="hl-ticks">
         <span id="legMin">—</span>
@@ -387,25 +390,14 @@ input[type=range]{width:100%;margin-top:6px;accent-color:var(--g);background:var
             <option value="180">S (180°)</option>
             <option value="225">SW (225°)</option>
             <option value="270">W (270°)</option>
-            <option value="315" selected>NW (315°)</option>
+            <option value="315" selected>NW (315°) ★</option>
           </select>
         </div>
-        <div>
-          <label>Wind speed (m/s)</label>
-          <select id="windSpeedSel">
-            <option value="8">8 m/s</option>
-            <option value="12">12 m/s</option>
-            <option value="15" selected>15 m/s</option>
-            <option value="20">20 m/s</option>
-          </select>
-        </div>
-        <div>
-          <label>Base height</label>
-          <select id="baseHSel">
-            <option value="1.5">1.5 m</option>
-            <option value="10" selected>10 m</option>
-          </select>
-        </div>
+      </div>
+      <div style="margin-top:8px;padding:7px 9px;background:rgba(88,166,255,.07);border:1px solid rgba(88,166,255,.2);border-radius:5px;font-size:10px;color:var(--b);line-height:1.6">
+        🌡 CFD reference: <strong>10 m/s</strong> (fixed) · spatial exposure pattern only<br>
+        📊 Scaled to <strong>EPW Barcelona</strong> seasonal means for feasibility<br>
+        ★ NW dominant (Tramontana). Try SE for sea breeze scenario.
       </div>
       <button class="run-btn" id="runBtn" onclick="runSimulation()">
         <div class="spin" id="runSpin"></div>
@@ -425,15 +417,15 @@ input[type=range]{width:100%;margin-top:6px;accent-color:var(--g);background:var
       </div>
       <div class="pipe-step" id="ps2">
         <span class="ps-icon">💨</span>
-        <div><div>Wind CFD simulation</div><div class="ps-sub">8-direction composite</div></div>
+        <div><div>Wind CFD simulation</div><div class="ps-sub">Infrared · exposure pattern</div></div>
       </div>
       <div class="pipe-step" id="ps3">
         <span class="ps-icon">🔲</span>
-        <div><div>Extract merged grid</div><div class="ps-sub" id="ps3sub">—</div></div>
+        <div><div>Extract exposure grid</div><div class="ps-sub" id="ps3sub">—</div></div>
       </div>
       <div class="pipe-step" id="ps4">
         <span class="ps-icon">📐</span>
-        <div><div>Power law extrapolation</div><div class="ps-sub" id="ps4sub">—</div></div>
+        <div><div>EPW scale + power law</div><div class="ps-sub" id="ps4sub">—</div></div>
       </div>
       <div class="pipe-step" id="ps5">
         <span class="ps-icon">🗺️</span>
@@ -444,8 +436,8 @@ input[type=range]{width:100%;margin-top:6px;accent-color:var(--g);background:var
     <div class="pp-sec" id="statsSection">
       <div class="pp-title">Extracted Data</div>
       <div class="stat-grid">
-        <div class="stat-card" id="sc0"><div class="sc-val" id="sv0">—</div><div class="sc-lbl">Mean speed</div></div>
-        <div class="stat-card" id="sc1"><div class="sc-val" id="sv1">—</div><div class="sc-lbl">Peak speed</div></div>
+        <div class="stat-card" id="sc0"><div class="sc-val" id="sv0">—</div><div class="sc-lbl">Mean · EPW scaled</div></div>
+        <div class="stat-card" id="sc1"><div class="sc-val" id="sv1">—</div><div class="sc-lbl">Peak · EPW scaled</div></div>
         <div class="stat-card" id="sc2"><div class="sc-val" id="sv2">—</div><div class="sc-lbl">Direction</div></div>
         <div class="stat-card" id="sc3"><div class="sc-val" id="sv3">—</div><div class="sc-lbl">Grid cells</div></div>
       </div>
@@ -514,15 +506,28 @@ input[type=range]{width:100%;margin-top:6px;accent-color:var(--g);background:var
       </div>
     </div>
     <div class="ec-sec">
-      <div class="ec-title">Building Color</div>
-      <div style="display:flex;gap:4px;margin-bottom:6px">
-        <button class="sn-btn active" data-lvl="ground" onclick="setBldLevel('ground')" style="flex:1;font-size:10px">Ground</button>
-        <button class="sn-btn"        data-lvl="mid"    onclick="setBldLevel('mid')"    style="flex:1;font-size:10px">Mid</button>
-        <button class="sn-btn"        data-lvl="roof"   onclick="setBldLevel('roof')"   style="flex:1;font-size:10px">Roof</button>
-      </div>
-      <div id="bldColorDesc" style="font-size:10px;color:var(--t3);line-height:1.5">
-        Infrared ground-level wind from simulation grid
-      </div>
+      <div class="ec-title">Turbine Analysis</div>
+      <button class="run-btn" id="feasibleBtn" onclick="toggleFeasibleRooftops()" style="margin-top:0;margin-bottom:6px;background:var(--bg3);color:var(--t1);border:1px solid var(--br)">
+        🏙 Show Feasible Rooftops
+      </button>
+      <button class="run-btn" id="corridorBtn" onclick="toggleCorridors()" style="margin-top:0;margin-bottom:2px;background:var(--bg3);color:var(--t1);border:1px solid var(--br)">
+        🔀 Show Wind Corridors
+      </button>
+      <div style="font-size:9px;color:var(--t3);margin-bottom:6px;padding-left:2px">Streets &gt;5 m/s — ideal for lamppost VAWTs</div>
+    </div>
+
+    <div class="ec-sec">
+      <div class="ec-title">Place Turbine Pin</div>
+      <button class="run-btn" id="pinModeBtn" onclick="togglePinMode()" style="margin-top:0;margin-bottom:6px;background:var(--bg3);color:var(--t1);border:1px solid var(--br)">
+        📍 Place Turbine Pin
+      </button>
+      <button onclick="clearAllPins()" style="font-size:10px;color:var(--t3);background:none;border:none;cursor:pointer;padding:0">Clear all pins</button>
+      <div id="pinList" style="margin-top:8px;font-size:10px;color:var(--t3)">No pins placed yet — enable placement mode and click a rooftop or street.</div>
+    </div>
+
+    <div class="ec-sec" id="rankedSec" style="display:none">
+      <div class="ec-title">Top Rooftops by Wind</div>
+      <div id="rankedList" style="max-height:220px;overflow-y:auto"></div>
     </div>
     <div class="ec-sec">
       <div class="ec-title">Season</div>
@@ -801,17 +806,22 @@ const ST = {
   geoData:     null,   // geometry response
 };
 
+// EPW Barcelona (climate.onebuilding.org — ESP_CT_Barcelona)
+// mult = EPW_seasonal_mean / 10  (simulation reference speed)
+// Formula: realistic_speed = infrared_grid_value × mult × diurnal
+const EPW_BCN = { annual:3.5, winter:4.2, spring:3.7, summer:2.8, autumn:3.4 };
+
 const SEASONS = {
-  annual: { mult:1.00, icon:'≈',  label:'Annual Mean',  color:'#8b949e',
-    info:'Showing annual average.' },
-  winter: { mult:1.30, icon:'❄️', label:'Winter',       color:'#58a6ff',
-    info:'Winter winds are <strong>30% above average</strong> — peak output.' },
-  spring: { mult:1.05, icon:'🌸', label:'Spring',       color:'#3fb950',
-    info:'Spring is <strong>5% above average</strong>.' },
-  summer: { mult:0.72, icon:'☀️', label:'Summer',       color:'#d29922',
-    info:'Summer winds drop <strong>28%</strong> — some turbines may stall.' },
-  autumn: { mult:0.95, icon:'🍂', label:'Autumn',       color:'#e07a3f',
-    info:'Autumn is <strong>5% below average</strong>.' },
+  annual: { mult: EPW_BCN.annual/10, icon:'≈',  label:'Annual Mean',  color:'#8b949e',
+    info:'Annual mean <strong>3.5 m/s</strong> — EPW Barcelona reference.' },
+  winter: { mult: EPW_BCN.winter/10, icon:'❄️', label:'Winter',       color:'#58a6ff',
+    info:'Winter mean <strong>4.2 m/s</strong> (EPW Barcelona, Dec–Feb). Tramontana dominant from NW.' },
+  spring: { mult: EPW_BCN.spring/10, icon:'🌸', label:'Spring',       color:'#3fb950',
+    info:'Spring mean <strong>3.7 m/s</strong> (EPW Barcelona, Mar–May).' },
+  summer: { mult: EPW_BCN.summer/10, icon:'☀️', label:'Summer',       color:'#d29922',
+    info:'Summer mean <strong>2.8 m/s</strong> (EPW Barcelona, Jun–Aug). Sea breeze from E.' },
+  autumn: { mult: EPW_BCN.autumn/10, icon:'🍂', label:'Autumn',       color:'#e07a3f',
+    info:'Autumn mean <strong>3.4 m/s</strong> (EPW Barcelona, Sep–Nov).' },
 };
 const DIURNAL = [.68,.63,.60,.60,.64,.74,.85,.92,.97,1.01,1.06,1.10,
                  1.14,1.10,1.06,1.01,.96,.91,.86,.85,.81,.77,.75,.70];
@@ -1011,10 +1021,10 @@ async function runSimulation() {
   spin.style.display = 'block';
   document.getElementById('runLbl').textContent = 'Simulating…';
 
-  ST.alpha  = parseFloat(document.getElementById('terrainSel').value);
-  ST.baseH  = parseFloat(document.getElementById('baseHSel').value);
-  const ws  = parseInt(document.getElementById('windSpeedSel').value);
-  const wd  = parseInt(document.getElementById('windDirSel').value);
+  ST.alpha = parseFloat(document.getElementById('terrainSel').value);
+  ST.baseH = 10;          // fixed — Infrared reference height
+  const ws = 10;          // fixed — CFD reference speed; EPW scales the result
+  const wd = parseInt(document.getElementById('windDirSel').value);
   const polygon = getActivePolygon();
 
   // Animate pipeline steps
@@ -1036,11 +1046,11 @@ async function runSimulation() {
     await stepDone('ps0');
 
     await stepOn('ps1', 'ps1sub',
-      `${polygon.coordinates[0].length - 1} vertices · ${(ws + ' m/s from ' + wd + '°')}`);
+      `${polygon.coordinates[0].length - 1} vertices · from ${['N','NE','E','SE','S','SW','W','NW'][Math.round(wd/45)%8]} · 10 m/s CFD ref`);
 
     document.getElementById('ps2').classList.add('active');
 
-    // Call real server
+    // Call real server — always ws=10 (EPW scales result per season)
     const res = await fetch(`${API}/api/simulate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1056,15 +1066,19 @@ async function runSimulation() {
     await stepDone('ps2');
 
     const data = await res.json();
-    ST.simData  = data;
-    ST.meanSpeed = parseFloat(data.meanSpeed) || 5.0;
+    ST.simData   = data;
+    // Store raw Infrared grid mean (at 10 m/s ref) — EPW mult scales it per season
+    const speeds = data.grid.flat().filter(v => v !== null);
+    const rawMean = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+    ST.meanSpeed  = rawMean;
 
     await stepOn('ps3', 'ps3sub',
-      `${data.shape[0]}×${data.shape[1]} grid · ${data.minLegend?.toFixed(1)}–${data.maxLegend?.toFixed(1)} m/s`);
+      `${data.shape[0]}×${data.shape[1]} grid · Infrared exposure map`);
     await stepDone('ps3');
 
+    const epwAnnual = (rawMean / 10) * EPW_BCN.annual;
     await stepOn('ps4', 'ps4sub',
-      `α=${ST.alpha} · base ${ST.baseH} m · roof ~${ST.roofH} m`);
+      `EPW × exposure · α=${ST.alpha} · roof ~${ST.roofH} m`);
     await delay(200);
     document.getElementById('z1lbl').textContent = `0 → ${ST.roofH} m · α=${ST.alpha}`;
     await stepDone('ps4');
@@ -1073,12 +1087,12 @@ async function runSimulation() {
     renderHeatmap(data);
     await stepDone('ps5');
 
-    // Stats
-    const speeds = data.grid.flat().filter(v => v !== null);
-    const mean   = speeds.reduce((a, b) => a + b, 0) / speeds.length;
-    const peak   = Math.max(...speeds);
-    document.getElementById('sv0').textContent = mean.toFixed(1) + ' m/s';
-    document.getElementById('sv1').textContent = peak.toFixed(1) + ' m/s';
+    // Stats — show EPW-scaled realistic speeds
+    const epwMean = EPW_BCN[ST.season];
+    const realisticMean = (rawMean / 10) * epwMean;
+    const realisticPeak = (Math.max(...speeds) / 10) * epwMean;
+    document.getElementById('sv0').textContent = realisticMean.toFixed(1) + ' m/s';
+    document.getElementById('sv1').textContent = realisticPeak.toFixed(1) + ' m/s';
     document.getElementById('sv2').textContent = ['N','NE','E','SE','S','SW','W','NW'][Math.round(wd/45)%8];
     document.getElementById('sv3').textContent = data.shape[0]*data.shape[1];
     [0,1,2,3].forEach((i,idx) =>
@@ -1086,7 +1100,7 @@ async function runSimulation() {
     setTimeout(() => document.getElementById('zoneBar').classList.add('show'), 500);
 
     ST.simDone = true;
-    ST.meanSpeed = mean;
+    ST.meanSpeed = rawMean; // raw Infrared grid mean at 10 m/s ref
 
     document.getElementById('tbtn-explore').classList.add('ready');
     document.getElementById('tbtn-results').classList.add('ready');
@@ -1118,6 +1132,33 @@ let buildingMeshes = [], groundPlane, zonePlane;
 let windStick = null;
 let heatmapPlane = null;
 let bldColorLevel = 'ground';
+let sceneCx = 0, sceneCy = 0;          // scene centre in local SDK metres (set in rebuildCity)
+let placedPins = [];                    // turbine placement pins
+let feasibleMarkers = [];               // mini turbines on feasible rooftops
+let corridorMesh = null;               // corridor highlight plane
+let pinMode = false;                   // placement mode toggle
+let mouseDownXY = null;                // for click vs drag detection
+
+function localGridSpeed(threeX, threeZ) {
+  // Look up the actual simulation grid value at a 3D scene position
+  if (!ST.simData || !ST.geoData) return ST.meanSpeed;
+  const { grid, bounds, shape } = ST.simData;
+  const { swLon, swLat } = ST.geoData;
+  const rows = shape[0], cols = shape[1];
+  const sw = bounds.sw, ne = bounds.ne;
+  const lonM = 111320 * Math.cos(swLat * Math.PI / 180);
+  const sdkX = threeX + sceneCx;
+  const sdkY = sceneCy - threeZ;
+  const lat  = swLat + sdkY / 111320;
+  const lon  = swLon + sdkX / lonM;
+  const col  = Math.round((lon - sw[1]) / (ne[1] - sw[1]) * (cols - 1));
+  const row  = Math.round((ne[0] - lat) / (ne[0] - sw[0]) * (rows - 1));
+  if (row >= 0 && row < rows && col >= 0 && col < cols) {
+    const v = grid[row][col];
+    if (v !== null && v !== undefined) return v;
+  }
+  return ST.meanSpeed;
+}
 let stickLabelEls = null;
 const STICK_H_LABELS = ['1.5 m','5 m','10 m','roof','roof+3','roof+8','roof+30'];
 const raycaster = new THREE.Raycaster();
@@ -1157,7 +1198,6 @@ function recolorBuildings() {
   });
   const minS = Math.min(...speeds), maxS = Math.max(...speeds);
   const range = maxS - minS || 1;
-  const botCol = new THREE.Color(0x111820);
   buildingMeshes.forEach((mesh, idx) => {
     const b = mesh.userData.bldData;
     if (!b) return;
@@ -1166,9 +1206,10 @@ function recolorBuildings() {
     const topCol = new THREE.Color(rv/255, gv/255, bv/255);
     const posA = mesh.geometry.attributes.position;
     const cols = new Float32Array(posA.count * 3);
+    const wallColor = new THREE.Color(0x1c2535);
     for (let i = 0; i < posA.count; i++) {
-      const vt = Math.max(0, posA.getY(i) / b.height);
-      const c = botCol.clone().lerp(topCol, Math.pow(vt, 1.6));
+      const isTop = posA.getY(i) >= b.height - 0.5;
+      const c = isTop ? topCol : wallColor;
       cols[i*3] = c.r; cols[i*3+1] = c.g; cols[i*3+2] = c.b;
     }
     mesh.geometry.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
@@ -1334,6 +1375,16 @@ function initThreeScene() {
 
   // Events
   renderer3.domElement.addEventListener('mousemove', onThreeHover);
+  renderer3.domElement.addEventListener('click', e => {
+    if (!pinMode) return;
+    const c2 = renderer3.domElement;
+    const r2 = c2.getBoundingClientRect();
+    mouse3.x =  ((e.clientX - r2.left) / r2.width)  * 2 - 1;
+    mouse3.y = -((e.clientY - r2.top)  / r2.height) * 2 + 1;
+    raycaster.setFromCamera(mouse3, camera3);
+    const hits2 = raycaster.intersectObjects([...buildingMeshes, groundPlane]);
+    if (hits2.length) placePinAt(hits2[0]);
+  });
   renderer3.domElement.addEventListener('mouseleave', () => {
     document.getElementById('hoverReadout').classList.remove('visible');
     if (windStick) windStick.visible = false;
@@ -1368,34 +1419,31 @@ function rebuildCity(data) {
   const bs = data.buildings;
   if (!bs || !bs.length) { buildMockCity(); return; }
 
-  // Compute scene centre
+  // Compute scene centre and store globally for grid lookup
   const allCx = bs.map(b => b.cx), allCy = bs.map(b => b.cy);
   const cx = (Math.min(...allCx) + Math.max(...allCx)) / 2;
   const cy = (Math.min(...allCy) + Math.max(...allCy)) / 2;
+  sceneCx = cx; sceneCy = cy;
 
   // Update mean rooftop height from real data
   const meanH = bs.reduce((s, b) => s + b.height, 0) / bs.length;
   ST.roofH = Math.round(meanH);
   if (zonePlane) zonePlane.position.y = ST.roofH;
 
-  const botCol = new THREE.Color(0x111820);
+  const wallCol = new THREE.Color(0x1c2535);
 
   bs.forEach(b => {
     const geo = new THREE.BufferGeometry();
     const raw = b.vertices;
     const pos  = new Float32Array(raw.length);
     const cols = new Float32Array(raw.length);
-    const topCol = new THREE.Color(bldColor(b.height / 35));
 
     for (let i = 0; i < raw.length; i += 3) {
       // SDK: X=east, Y=north, Z=height → Three.js: X, Y=height, Z=-north
       pos[i]   = raw[i]   - cx;
-      pos[i+1] = raw[i+2];           // height → Y
-      pos[i+2] = -(raw[i+1] - cy);   // north → -Z
-
-      const t = Math.max(0, raw[i+2] / b.height);
-      const c = botCol.clone().lerp(topCol, Math.pow(t, 1.6));
-      cols[i] = c.r; cols[i+1] = c.g; cols[i+2] = c.b;
+      pos[i+1] = raw[i+2];
+      pos[i+2] = -(raw[i+1] - cy);
+      cols[i] = wallCol.r; cols[i+1] = wallCol.g; cols[i+2] = wallCol.b;
     }
 
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -1408,8 +1456,9 @@ function rebuildCity(data) {
     scene3.add(mesh);
     buildingMeshes.push(mesh);
   });
-  recolorBuildings();
   applyHeatmapToGround();
+  buildRankedList();
+  detectCorridors();
 
   // Trees
   (data.trees || []).forEach(t => {
@@ -1478,6 +1527,14 @@ function makeTree(x, z, h, r) {
 function animate3() {
   requestAnimationFrame(animate3);
   controls3.update();
+  // Spin feasible-rooftop rotors (spinZ = vertical-plane HAWT rotor)
+  feasibleMarkers.forEach(grp => {
+    grp.children.forEach(child => {
+      if (!child.userData.spin) return;
+      if (child.userData.spinZ) child.rotation.z += child.userData.rate * 0.016;
+      else                      child.rotation.y += child.userData.rate * 0.016;
+    });
+  });
   renderer3.render(scene3, camera3);
 }
 
@@ -1564,14 +1621,14 @@ function makeWindStick() {
   return grp;
 }
 
-function updateWindStick(point, roofH) {
+function updateWindStick(point, roofH, localSpd) {
   if (!windStick) { windStick = makeWindStick(); scene3.add(windStick); }
   windStick.visible = true;
   windStick.position.set(point.x, 0, point.z);
   windStick.userData.disc.position.y = roofH;
 
   const sm = SEASONS[ST.season].mult, dm = DIURNAL[ST.hour];
-  const base = ST.meanSpeed * sm * dm;
+  const base = (localSpd ?? ST.meanSpeed) * sm * dm;
   const keyH = [1.5, 5, 10, roofH, roofH + 3, roofH + 8, roofH + 30];
 
   return windStick.userData.rings.map((ring, i) => {
@@ -1603,9 +1660,10 @@ function onThreeHover(e) {
     return;
   }
 
-  const hit   = hits[0];
-  const roofH = hit.object !== groundPlane ? (hit.object.userData.height || ST.roofH) : ST.roofH;
-  const profile = updateWindStick(hit.point, roofH);
+  const hit      = hits[0];
+  const roofH    = hit.object !== groundPlane ? (hit.object.userData.height || ST.roofH) : ST.roofH;
+  const localSpd = localGridSpeed(hit.point.x, hit.point.z);
+  const profile  = updateWindStick(hit.point, roofH, localSpd);
   updateStickLabels(profile);
 
   // Build profile HTML
@@ -1645,6 +1703,350 @@ function selectTurbine(type) {
   ST.turbineType = type;
   document.querySelectorAll('.tp-item').forEach(el =>
     el.classList.toggle('active', el.dataset.type === type));
+}
+
+// ── Placement pins ───────────────────────────────────
+function togglePinMode() {
+  pinMode = !pinMode;
+  const btn = document.getElementById('pinModeBtn');
+  btn.classList.toggle('active', pinMode);
+  btn.textContent = pinMode ? '📍 Click to place — ON' : '📍 Place Turbine Pin';
+  document.getElementById('three-canvas').style.cursor = pinMode ? 'crosshair' : 'default';
+}
+
+function placePinAt(hit) {
+  if (!ST.simDone) { showToast('Run a simulation first to get wind data for this location.'); return; }
+  const bldH = hit.object !== groundPlane ? (hit.object.userData.height || 0) : 0;
+  const localSpd = localGridSpeed(hit.point.x, hit.point.z);
+  const sm = SEASONS[ST.season].mult, dm = DIURNAL[ST.hour];
+  const base = localSpd * sm * dm;
+
+  // Pick the turbine with highest hub speed (fall back to rooftop-vawt if no sim data yet)
+  let bestType = 'rooftop-vawt', bestSpd = 0;
+  for (const [type, t] of Object.entries(TURBINES)) {
+    const hubH = t.aboveRoof ? bldH + t.hubAboveRoof : t.hubAGL;
+    const spd = hubH <= ST.roofH
+      ? pl(base, ST.baseH, Math.max(1, hubH), ST.alpha)
+      : pl(pl(base, ST.baseH, ST.roofH, ST.alpha), ST.roofH, hubH, 0.12);
+    if (spd >= bestSpd) { bestSpd = spd; bestType = type; }
+  }
+  const t = TURBINES[bestType];
+  const hubH = t.aboveRoof ? bldH + t.hubAboveRoof : t.hubAGL;
+  const v = verdict(bestSpd, t.minSpd);
+
+  const idx = placedPins.length + 1;
+  const grp = new THREE.Group();
+  grp.position.set(hit.point.x, 0, hit.point.z);
+
+  // Pin post
+  const postH = hubH;
+  const [pr, pg, pb] = windColor(Math.min(1, bestSpd / 12));
+  const pinColor = (pr << 16) | (pg << 8) | pb;
+  const post = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.15, 0.15, postH, 8),
+    new THREE.MeshLambertMaterial({ color: pinColor })
+  );
+  post.position.y = postH / 2;
+  grp.add(post);
+
+  // Hub disc
+  const hub = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.2, 1.2, 0.25, 16),
+    new THREE.MeshLambertMaterial({ color: pinColor, transparent: true, opacity: 0.85 })
+  );
+  hub.position.y = hubH;
+  grp.add(hub);
+
+  // Number label (sprite)
+  const labelCanvas = document.createElement('canvas');
+  labelCanvas.width = 64; labelCanvas.height = 64;
+  const lctx = labelCanvas.getContext('2d');
+  lctx.fillStyle = `rgb(${pr},${pg},${pb})`;
+  lctx.beginPath(); lctx.arc(32, 32, 28, 0, Math.PI * 2); lctx.fill();
+  lctx.fillStyle = '#0d1117'; lctx.font = 'bold 28px sans-serif';
+  lctx.textAlign = 'center'; lctx.textBaseline = 'middle';
+  lctx.fillText(idx, 32, 32);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(labelCanvas) }));
+  sprite.position.y = hubH + 3; sprite.scale.set(4, 4, 1);
+  grp.add(sprite);
+
+  scene3.add(grp);
+  const pinData = { idx, grp, bldH, hubH, bestSpd, bestType, verdict: v, localSpd };
+  placedPins.push(pinData);
+  renderPinList();
+}
+
+function removePinAt(idx) {
+  const i = placedPins.findIndex(p => p.idx === idx);
+  if (i < 0) return;
+  scene3.remove(placedPins[i].grp);
+  placedPins.splice(i, 1);
+  renderPinList();
+}
+
+function clearAllPins() {
+  placedPins.forEach(p => scene3.remove(p.grp));
+  placedPins = [];
+  renderPinList();
+}
+
+function renderPinList() {
+  const el = document.getElementById('pinList');
+  if (!placedPins.length) {
+    el.innerHTML = '<div style="font-size:10px;color:var(--t3);padding:4px 0">No pins placed yet — enable placement mode and click a rooftop or street.</div>';
+    return;
+  }
+  el.innerHTML = placedPins.map(p => {
+    const t = TURBINES[p.bestType];
+    const [pr, pg, pb] = windColor(Math.min(1, p.bestSpd / 12));
+    const col = `rgb(${pr},${pg},${pb})`;
+    return `<div style="background:var(--bg2);border:1px solid var(--br);border-radius:5px;padding:7px 9px;margin-bottom:5px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="font-size:10px;font-weight:700;color:${col}">Pin ${p.idx}</span>
+        <button onclick="removePinAt(${p.idx})" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:11px;padding:0">✕</button>
+      </div>
+      <div style="font-size:10px;color:var(--t2)">${t.label}</div>
+      <div style="font-size:14px;font-weight:700;color:${col}">${p.bestSpd.toFixed(1)} <span style="font-size:9px;font-weight:400">m/s at ${p.hubH.toFixed(0)} m</span></div>
+      <div style="font-size:9px;padding:2px 5px;border-radius:10px;display:inline-block;margin-top:3px;background:rgba(${pr},${pg},${pb},.12);color:${col}">${p.verdict.txt}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Show feasible rooftops ───────────────────────────
+let showingFeasible = false;
+
+function toggleFeasibleRooftops() {
+  if (showingFeasible) {
+    clearFeasibleMarkers();
+    showingFeasible = false;
+    document.getElementById('feasibleBtn').textContent = '🏙 Show Feasible Rooftops';
+  } else {
+    buildFeasibleMarkers();
+    showingFeasible = true;
+    document.getElementById('feasibleBtn').textContent = '🏙 Hide Feasible Rooftops';
+  }
+}
+
+function clearFeasibleMarkers() {
+  feasibleMarkers.forEach(m => scene3.remove(m));
+  feasibleMarkers = [];
+}
+
+function buildFeasibleMarkers() {
+  clearFeasibleMarkers();
+  const sm = SEASONS[ST.season].mult, dm = DIURNAL[ST.hour];
+
+  buildingMeshes.forEach(mesh => {
+    const b = mesh.userData.bldData;
+    if (!b) return;
+    const localSpd = buildingWindSpeed(b, 'ground');
+    const base = localSpd * sm * dm;
+    const roofSpd = pl(base, ST.baseH, b.height, ST.alpha);
+
+    // Check which turbines are feasible
+    let best = null, bestSpd = 0;
+    for (const [type, t] of Object.entries(TURBINES)) {
+      const hubH = t.aboveRoof ? b.height + t.hubAboveRoof : t.hubAGL;
+      const spd = hubH <= ST.roofH
+        ? pl(base, ST.baseH, Math.max(1, hubH), ST.alpha)
+        : pl(pl(base, ST.baseH, ST.roofH, ST.alpha), ST.roofH, hubH, 0.12);
+      if (spd >= t.minSpd * 1.3 && spd > bestSpd) { bestSpd = spd; best = type; }
+    }
+    if (!best) return;
+
+    // All feasible markers are green — consistent with feasibility tab
+    const col = 0x3fb950;
+    const mat = new THREE.MeshLambertMaterial({ color: col });
+
+    const grp = new THREE.Group();
+    grp.position.set(mesh.userData.bx, b.height, mesh.userData.bz);
+
+    // Tower (thin, tapered)
+    const towerH = TURBINES[best].aboveRoof ? TURBINES[best].hubAboveRoof : 3;
+    const tower = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.14, towerH, 6),
+      mat
+    );
+    tower.position.y = towerH / 2;
+    grp.add(tower);
+
+    // Nacelle — small box sitting on top of tower
+    const nacelle = new THREE.Mesh(
+      new THREE.BoxGeometry(0.45, 0.18, 0.18),
+      mat
+    );
+    nacelle.position.set(0.22, towerH, 0);
+    grp.add(nacelle);
+
+    // Rotor — 3 blades in a VERTICAL plane, spinning around Z (like a real HAWT)
+    const rotorGrp = new THREE.Group();
+    rotorGrp.position.set(0.46, towerH, 0);
+    rotorGrp.userData.spin   = true;
+    rotorGrp.userData.spinZ  = true;
+    rotorGrp.userData.rate   = bestSpd * 0.05;
+    const bladeLen = towerH * 0.65;
+    for (let bi = 0; bi < 3; bi++) {
+      const bl = new THREE.Mesh(
+        new THREE.BoxGeometry(0.07, bladeLen, 0.04),
+        mat
+      );
+      bl.position.y = bladeLen / 2;
+      const bw = new THREE.Group();
+      bw.rotation.z = bi * Math.PI * 2 / 3;
+      bw.add(bl);
+      rotorGrp.add(bw);
+    }
+    grp.add(rotorGrp);
+
+    scene3.add(grp);
+    feasibleMarkers.push(grp);
+  });
+}
+
+// ── Ranked list ──────────────────────────────────────
+function buildRankedList() {
+  const el = document.getElementById('rankedList');
+  if (!el || !buildingMeshes.length) return;
+
+  const sm = SEASONS[ST.season].mult, dm = DIURNAL[ST.hour];
+
+  const ranked = buildingMeshes.map(mesh => {
+    const b = mesh.userData.bldData;
+    if (!b) return null;
+    const localSpd = buildingWindSpeed(b, 'ground');
+    const base = localSpd * sm * dm;
+    const roofSpd = b.height > ST.baseH
+      ? pl(base, ST.baseH, b.height, ST.alpha)
+      : base;
+    let best = null, bestSpd = 0;
+    for (const [type, t] of Object.entries(TURBINES)) {
+      const hubH = t.aboveRoof ? b.height + t.hubAboveRoof : t.hubAGL;
+      const spd = hubH <= ST.roofH
+        ? pl(base, ST.baseH, Math.max(1, hubH), ST.alpha)
+        : pl(pl(base, ST.baseH, ST.roofH, ST.alpha), ST.roofH, hubH, 0.12);
+      if (spd > bestSpd) { bestSpd = spd; best = type; }
+    }
+    return { b, mesh, roofSpd, bestType: best, bestSpd };
+  }).filter(Boolean).sort((a, b) => b.roofSpd - a.roofSpd);
+
+  document.getElementById('rankedSec').style.display = 'block';
+  el.innerHTML = ranked.slice(0, 12).map((r, i) => {
+    const t = Math.min(1, r.roofSpd / 12);
+    const [pr, pg, pb] = windColor(t);
+    const col = `rgb(${pr},${pg},${pb})`;
+    const v = verdict(r.bestSpd, TURBINES[r.bestType].minSpd);
+    const vcols = { high:'#58e07a', ok:'#3fb950', marg:'#d29922', no:'#f85149' };
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 2px;border-bottom:1px solid var(--br2);cursor:pointer"
+               onmouseenter="highlightBuilding(${i})" onmouseleave="highlightBuilding(-1)"
+               onclick="flyToBuilding(${i})">
+      <span style="font-size:10px;color:var(--t3);min-width:16px">${i+1}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:10px;color:var(--t1);font-weight:600">${r.roofSpd.toFixed(1)} m/s <span style="color:var(--t3);font-weight:400">@ roof</span></div>
+        <div style="font-size:9px;color:var(--t2)">${TURBINES[r.bestType].label} · ${r.b.height.toFixed(0)} m tall</div>
+      </div>
+      <span style="font-size:9px;font-weight:700;color:${vcols[v.cls]}">${v.cls === 'high' ? '✦' : v.cls === 'ok' ? '✓' : v.cls === 'marg' ? '~' : '✗'}</span>
+    </div>`;
+  }).join('');
+
+  // Store ranked for highlight/fly
+  window._ranked = ranked;
+}
+
+let _highlightedMesh = null;
+function highlightBuilding(idx) {
+  if (_highlightedMesh) {
+    // restore — recolorBuildings is expensive, just let it be
+    _highlightedMesh = null;
+  }
+  if (idx < 0 || !window._ranked) return;
+  _highlightedMesh = window._ranked[idx]?.mesh;
+  if (_highlightedMesh) {
+    // flash a white tint — quick approach via emissive
+    if (_highlightedMesh.material.emissive) _highlightedMesh.material.emissive.set(0x223344);
+  }
+}
+
+function flyToBuilding(idx) {
+  if (!window._ranked || !controls3) return;
+  const r = window._ranked[idx];
+  if (!r) return;
+  const bx = r.mesh.userData.bx, bz = r.mesh.userData.bz;
+  controls3.target.set(bx, r.b.height * 0.5, bz);
+  camera3.position.set(bx + 30, r.b.height + 20, bz + 30);
+  controls3.update();
+}
+
+// ── Corridor detection ───────────────────────────────
+let showingCorridors = false;
+
+function toggleCorridors() {
+  if (showingCorridors) {
+    if (corridorMesh) { scene3.remove(corridorMesh); corridorMesh = null; }
+    showingCorridors = false;
+    document.getElementById('corridorBtn').textContent = '🔀 Show Wind Corridors';
+  } else {
+    buildCorridorMesh();
+    showingCorridors = true;
+    document.getElementById('corridorBtn').textContent = '🔀 Hide Wind Corridors';
+  }
+}
+
+function buildCorridorMesh() {
+  if (corridorMesh) { scene3.remove(corridorMesh); corridorMesh = null; }
+  if (!ST.simData || !ST.geoData) return;
+
+  const { grid, bounds, shape } = ST.simData;
+  const rows = shape[0], cols = shape[1];
+  const { swLon, swLat } = ST.geoData;
+  const sw = bounds.sw, ne = bounds.ne;
+  const lonM = 111320 * Math.cos(swLat * Math.PI / 180);
+
+  // Render corridors: cells >5 m/s as colored canvas texture
+  const W = cols, H = rows;
+  const cvs = document.createElement('canvas');
+  cvs.width = W; cvs.height = H;
+  const ctx = cvs.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  let hasData = false;
+  for (let r = 0; r < rows; r++) {
+    const srcRow = grid[rows - 1 - r]; // flip north-up
+    for (let c = 0; c < cols; c++) {
+      const v = srcRow[c];
+      const i = (r * W + c) * 4;
+      if (v !== null && v >= 5) {
+        const t = Math.min(1, (v - 5) / 5);
+        img.data[i]   = Math.round(88 + 167*t);
+        img.data[i+1] = Math.round(166 - 100*t);
+        img.data[i+2] = 255;
+        img.data[i+3] = Math.round(180 + 60*t);
+        hasData = true;
+      }
+    }
+  }
+  if (!hasData) { showToast('No wind corridors >5 m/s found in this simulation.'); return; }
+  ctx.putImageData(img, 0, 0);
+
+  const sw_x = (sw[1] - swLon) * lonM;
+  const sw_y = (sw[0] - swLat) * 111320;
+  const ne_x = (ne[1] - swLon) * lonM;
+  const ne_y = (ne[0] - swLat) * 111320;
+  const width = ne_x - sw_x, depth = ne_y - sw_y;
+  const cx3 = (sw_x + ne_x) / 2 - sceneCx;
+  const cz3 = -((sw_y + ne_y) / 2 - sceneCy);
+
+  const geo = new THREE.PlaneGeometry(width, depth);
+  geo.rotateX(-Math.PI / 2);
+  const tex = new THREE.CanvasTexture(cvs);
+  corridorMesh = new THREE.Mesh(geo,
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.85, depthWrite: false })
+  );
+  corridorMesh.position.set(cx3, 0.35, cz3);
+  scene3.add(corridorMesh);
+}
+
+// detectCorridors is called after rebuildCity but does nothing until user toggles
+function detectCorridors() {
+  // Placeholder: actual corridor mesh is built on demand via toggleCorridors()
 }
 
 function set3DSeason(s) {
