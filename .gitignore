@@ -21,6 +21,10 @@ site_data.js
 .env
 *.env
 
+# Editor / local tool configs
+.vscode/
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
