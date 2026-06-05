@@ -319,6 +319,7 @@ input[type=range]{width:100%;margin-top:6px;accent-color:var(--g);background:var
   display:flex;align-items:center;gap:5px;display:none}
 .ws-lh{font-size:9px;color:var(--t3);font-weight:400;min-width:34px}
 </style>
+<script src="config.js"></script>
 </head>
 <body>
 
@@ -778,7 +779,7 @@ input[type=range]{width:100%;margin-top:6px;accent-color:var(--g);background:var
 // ════════════════════════════════════════════════
 // CONFIG
 // ════════════════════════════════════════════════
-const API = 'http://localhost:8000';
+const API = (window.BACKEND_URL || 'http://localhost:8000').replace(/\/$/, '');
 
 // Default polygon — Barcelona Eixample
 const DEFAULT_POLYGON = {

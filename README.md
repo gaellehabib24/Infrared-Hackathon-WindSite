@@ -120,6 +120,7 @@ For this hackathon, we run a **single user-selected direction** and scale by the
 | Wind CFD | [Infrared SDK](https://infrared.city) `infrared-sdk 0.4.9` |
 | Climate data | EPW Barcelona (climate.onebuilding.org) |
 | Backend | Python · FastAPI · uvicorn |
+| Database | SQLAlchemy · Postgres (Neon) in production · SQLite locally |
 | 2D map | Leaflet.js + Leaflet.draw |
 | 3D scene | Three.js r128 |
 | 3D photorealistic | Mapbox GL JS + deck.gl + Cesium Ion |
@@ -127,7 +128,28 @@ For this hackathon, we run a **single user-selected direction** and scale by the
 
 ---
 
-## Setup
+## Repository structure
+
+```
+├── frontend/          → deployed to Vercel (static site)
+│   ├── windsite.html  → single-page app — all four tabs
+│   ├── config.js      → set BACKEND_URL here after deploying the backend
+│   └── vercel.json    → Vercel routing config
+│
+├── backend/           → deployed to Render (Python web service)
+│   ├── server.py      → FastAPI app — wraps Infrared SDK
+│   ├── database.py    → SQLAlchemy models (Simulation + GeometryCache)
+│   ├── requirements.txt
+│   ├── fetch_geometry.py → local dev helper — pre-fetches building geometry
+│   └── Procfile       → Render start command
+│
+├── render.yaml        → Render service definition
+└── README.md
+```
+
+---
+
+## Local development
 
 ### Requirements
 
@@ -141,45 +163,55 @@ python -m venv .venv
 .venv\Scripts\activate          # Windows
 # source .venv/bin/activate     # macOS / Linux
 
-pip install infrared-sdk fastapi uvicorn numpy pydantic
+pip install -r backend/requirements.txt
 ```
 
 ### Run
 
 ```bash
-# Set your Infrared API key (required before starting the server)
+# Set your Infrared API key
 set INFRARED_API_KEY=your-key-here          # Windows CMD
 # $env:INFRARED_API_KEY = 'your-key-here'  # PowerShell
 # export INFRARED_API_KEY='your-key-here'  # bash
 
-# Start the server
-.venv\Scripts\python server.py
-
-# Open in browser
-# http://localhost:8000
+# Start the backend (from repo root)
+cd backend
+uvicorn server:app --reload --port 8000
 ```
 
-Simulation results are cached in `./cache/` — re-running the same polygon and direction is instant.
+Then open `frontend/windsite.html` directly in your browser, or serve it with any static server. The frontend reads `config.js` which defaults to `localhost:8000`.
 
-### Optional: pre-fetch building geometry
-
-```bash
-.venv\Scripts\python fetch_geometry.py
-```
-
-Downloads and caches building geometry for the default Barcelona Eixample polygon so the 3D scene loads immediately without an API call.
+Simulation results are stored in a local SQLite file (`backend/windsite.db`) — re-running the same polygon is instant.
 
 ---
 
-## Files
+## Deployment
 
-| File | Purpose |
-|---|---|
-| `windsite.html` | Single-page frontend — all four tabs |
-| `server.py` | FastAPI backend wrapping the Infrared SDK |
-| `fetch_geometry.py` | Standalone geometry pre-fetcher |
-| `CONTEXT.md` | Architecture notes — two-zone model, full pipeline |
-| `infrared-sdk-deckgl-recipe.md` | deck.gl + Cesium Ion recipe used for Tab 4 |
+### 1 — Backend on Render
+
+1. Connect your GitHub repo to [Render](https://render.com)
+2. Create a **Web Service** — Render will detect `render.yaml` automatically
+3. Set these environment variables in the Render dashboard:
+   - `INFRARED_API_KEY` — your Infrared key
+   - `DATABASE_URL` — your Neon Postgres connection string (see below)
+4. Deploy. Render will install dependencies and start uvicorn.
+
+### 2 — Database on Neon (free Postgres)
+
+1. Create a free account at [neon.tech](https://neon.tech)
+2. Create a new project → copy the **Connection string** (starts with `postgresql://`)
+3. Paste it as `DATABASE_URL` in Render. Tables are created automatically on first startup.
+
+### 3 — Frontend on Vercel
+
+1. Connect your GitHub repo to [Vercel](https://vercel.com)
+2. Set **Root Directory** to `frontend/`
+3. No build command needed — it's a plain HTML file
+4. After Render gives you a URL (e.g. `https://windsite-backend.onrender.com`):
+   - Edit `frontend/config.js`, set `window.BACKEND_URL = 'https://windsite-backend.onrender.com'`
+   - Push → Vercel auto-redeploys
+
+> **Note on Render free tier**: the service sleeps after 15 minutes of inactivity and takes ~30 seconds to wake up on the next request. This is fine for demos. Upgrade to a paid Render plan to avoid cold starts.
 
 ---
 

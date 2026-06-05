@@ -1,39 +1,48 @@
 """
-server.py — WindSite backend
-Wraps the Infrared SDK and serves the HTML frontend.
+server.py — WindSite backend (FastAPI)
 
-Usage (activate venv first):
-    python server.py
-    # or for auto-reload during dev:
+Local dev:
+    cd backend
     uvicorn server:app --reload --port 8000
 
-Open: http://localhost:8000
+Render (production):
+    render.yaml handles the start command; PORT is set automatically.
+
+Environment variables:
+    INFRARED_API_KEY   — required
+    DATABASE_URL       — optional; defaults to sqlite:///./windsite.db
+                         Set to your Neon Postgres URL on Render.
 """
 
 from __future__ import annotations
 import json, hashlib, math, os
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+import sqlalchemy
 
-HERE  = Path(__file__).parent
-CACHE = HERE / "cache"
-CACHE.mkdir(exist_ok=True)
+from database import SessionLocal, GeometryCache, Simulation, init_db
 
-# ── In-memory building cache (DotBimMesh objects can't be JSON-serialised) ────
-_bld_cache: dict[str, Any] = {}
+app = FastAPI(title="WindSite API", version="2.0")
 
-app = FastAPI(title="WindSite API", version="1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+
+# In-memory store for DotBimMesh objects (not JSON-serialisable, not DB-storable)
+_bld_cache: dict[str, Any] = {}
+
+
+@app.on_event("startup")
+def on_startup():
+    init_db()
 
 
 # ════════════════════════════════════════════════════════════
@@ -45,7 +54,6 @@ def poly_hash(polygon: dict) -> str:
 
 
 def mesh_to_dict(bid: str, mesh) -> dict | None:
-    """Convert a DotBimMesh → plain dict for JSON + Three.js."""
     cs = list(mesh.coordinates)
     if not cs:
         return None
@@ -66,7 +74,6 @@ def mesh_to_dict(bid: str, mesh) -> dict | None:
 
 
 def tree_to_dict(tid: str, feat: dict, sw_lon: float, sw_lat: float) -> dict | None:
-    """Convert a vegetation GeoJSON feature → local-coordinate dict."""
     g = feat.get("geometry") or {}
     if g.get("type") != "Point":
         return None
@@ -83,7 +90,6 @@ def tree_to_dict(tid: str, feat: dict, sw_lon: float, sw_lat: float) -> dict | N
 
 
 def grid_to_payload(grid: np.ndarray, min_leg, max_leg, bounds) -> dict:
-    """Downsample grid to ≤128×128, NaN→None, and package with map bounds."""
     h, w   = grid.shape
     step   = max(1, max(h, w) // 128)
     small  = grid[::step, ::step]
@@ -94,7 +100,6 @@ def grid_to_payload(grid: np.ndarray, min_leg, max_leg, bounds) -> dict:
         for row in small.tolist()
     ]
 
-    # result.bounds added in SDK 0.4.4 — try attribute, fall back to sequence
     try:
         sw = [float(bounds.south), float(bounds.west)]
         ne = [float(bounds.north), float(bounds.east)]
@@ -121,15 +126,22 @@ def grid_to_payload(grid: np.ndarray, min_leg, max_leg, bounds) -> dict:
 
 @app.get("/api/health")
 def health():
+    db_ok = False
+    try:
+        with SessionLocal() as db:
+            db.execute(sqlalchemy.text("SELECT 1"))
+            db_ok = True
+    except Exception:
+        pass
     return {
         "status":       "ok",
         "infrared_key": bool(os.getenv("INFRARED_API_KEY")),
-        "cached_polygons": len(_bld_cache),
+        "db":           "connected" if db_ok else "error",
     }
 
 
 # ════════════════════════════════════════════════════════════
-# /api/geometry  — fetch buildings + vegetation, cache both
+# /api/geometry
 # ════════════════════════════════════════════════════════════
 
 class GeoRequest(BaseModel):
@@ -140,12 +152,12 @@ class GeoRequest(BaseModel):
 def get_geometry(req: GeoRequest):
     polygon = req.polygon
     h       = poly_hash(polygon)
-    file    = CACHE / f"geometry_{h}.json"
 
-    # Return from disk cache if present
-    if file.exists():
-        print(f"📦  geometry cache hit  [{h}]")
-        return JSONResponse(json.loads(file.read_text()))
+    with SessionLocal() as db:
+        cached = db.query(GeometryCache).filter_by(polygon_hash=h).first()
+        if cached:
+            print(f"📦  geometry DB hit  [{h}]")
+            return JSONResponse(cached.data)
 
     if not os.getenv("INFRARED_API_KEY"):
         raise HTTPException(503, "INFRARED_API_KEY not set")
@@ -153,15 +165,14 @@ def get_geometry(req: GeoRequest):
     print(f"🌐  fetching geometry from Infrared …  [{h}]")
     from infrared_sdk import InfraredClient
 
-    coords = polygon["coordinates"][0]
-    sw_lon = min(c[0] for c in coords)
-    sw_lat = min(c[1] for c in coords)
+    coords  = polygon["coordinates"][0]
+    sw_lon  = min(c[0] for c in coords)
+    sw_lat  = min(c[1] for c in coords)
 
     with InfraredClient() as client:
         area     = client.buildings.get_area(polygon)
         area_veg = client.vegetation.get_area(polygon)
 
-    # Cache DotBimMesh objects in memory (needed for simulations)
     _bld_cache[h] = area.buildings
 
     buildings = [b for bid, m in area.buildings.items()
@@ -179,37 +190,43 @@ def get_geometry(req: GeoRequest):
         "trees":     trees,
     }
 
-    file.write_text(json.dumps(result))
+    with SessionLocal() as db:
+        db.add(GeometryCache(polygon_hash=h, data=result))
+        db.commit()
+
     return result
 
 
 # ════════════════════════════════════════════════════════════
-# /api/simulate  — run wind-speed analysis
+# /api/simulate
 # ════════════════════════════════════════════════════════════
 
 class SimRequest(BaseModel):
     polygon:        dict
-    wind_speed:     int = 15    # 1–100 m/s (int only)
-    wind_direction: int = 315   # meteorological degrees (315 = from NW)
+    wind_speed:     int = 10
+    wind_direction: int = 315
 
 
 @app.post("/api/simulate")
 def run_simulation(req: SimRequest):
     polygon = req.polygon
     ph      = poly_hash(polygon)
-    key     = f"{ph}_ws{req.wind_speed}_wd{req.wind_direction}"
-    file    = CACHE / f"sim_{key}.json"
 
-    if file.exists():
-        print(f"📦  simulation cache hit  [{key}]")
-        return JSONResponse(json.loads(file.read_text()))
+    with SessionLocal() as db:
+        cached = db.query(Simulation).filter_by(
+            polygon_hash   = ph,
+            wind_direction = req.wind_direction,
+            wind_speed_ref = req.wind_speed,
+        ).first()
+        if cached:
+            print(f"📦  simulation DB hit  [{ph} wd={req.wind_direction}]")
+            return JSONResponse(cached.payload)
 
     if not os.getenv("INFRARED_API_KEY"):
         raise HTTPException(503, "INFRARED_API_KEY not set")
 
-    # Ensure buildings are cached in memory
     if ph not in _bld_cache:
-        print(f"📐  pre-fetching buildings for simulation …")
+        print("📐  pre-fetching buildings for simulation …")
         from infrared_sdk import InfraredClient
         with InfraredClient() as client:
             area = client.buildings.get_area(polygon)
@@ -241,24 +258,19 @@ def run_simulation(req: SimRequest):
     payload["windSpeed"]     = req.wind_speed
     payload["windDirection"] = req.wind_direction
 
-    file.write_text(json.dumps(payload))
+    with SessionLocal() as db:
+        db.add(Simulation(
+            polygon_hash   = ph,
+            wind_direction = req.wind_direction,
+            wind_speed_ref = req.wind_speed,
+            payload        = payload,
+        ))
+        db.commit()
+
     return payload
-
-
-# ════════════════════════════════════════════════════════════
-# Serve static files (HTML + JS + JSON)
-# The static mount must be last so API routes take priority
-# ════════════════════════════════════════════════════════════
-
-@app.get("/")
-def root():
-    return RedirectResponse(url="/windsite.html")
-
-app.mount("/", StaticFiles(directory=str(HERE), html=False), name="static")
 
 
 if __name__ == "__main__":
     import uvicorn
-    print("🌬  WindSite server — http://localhost:8000")
-    print("   Ctrl+C to stop")
+    print("🌬  WindSite API — http://localhost:8000")
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False)
