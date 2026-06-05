@@ -185,33 +185,60 @@ Simulation results are stored in a local SQLite file (`backend/windsite.db`) —
 
 ---
 
-## Deployment
+## Live deployment
 
-### 1 — Backend on Render
+| Service | URL |
+|---|---|
+| Frontend | https://infrared-hackathon-wind-site.vercel.app/ |
+| Backend API | https://windsite-backend.onrender.com |
+| Database | Neon Postgres (eu-central-1) |
 
-1. Connect your GitHub repo to [Render](https://render.com)
-2. Create a **Web Service** — Render will detect `render.yaml` automatically
-3. Set these environment variables in the Render dashboard:
-   - `INFRARED_API_KEY` — your Infrared key
-   - `DATABASE_URL` — your Neon Postgres connection string (see below)
-4. Deploy. Render will install dependencies and start uvicorn.
+---
 
-### 2 — Database on Neon (free Postgres)
+## Deployment — how to reproduce
+
+### Architecture
+
+```
+Browser → Vercel (static HTML/JS)
+             ↓ fetch /api/*
+        Render (FastAPI, Python)
+             ↓ SQLAlchemy
+        Neon (Postgres, free tier)
+             ↓ Infrared SDK
+        infrared.city (CFD engine)
+```
+
+### Step 1 — Database on Neon
 
 1. Create a free account at [neon.tech](https://neon.tech)
 2. Create a new project → copy the **Connection string** (starts with `postgresql://`)
-3. Paste it as `DATABASE_URL` in Render. Tables are created automatically on first startup.
+3. DB tables (`simulations`, `geometry_cache`) are created automatically on first server startup.
 
-### 3 — Frontend on Vercel
+### Step 2 — Backend on Render
 
-1. Connect your GitHub repo to [Vercel](https://vercel.com)
-2. Set **Root Directory** to `frontend/`
-3. No build command needed — it's a plain HTML file
-4. After Render gives you a URL (e.g. `https://windsite-backend.onrender.com`):
-   - Edit `frontend/config.js`, set `window.BACKEND_URL = 'https://windsite-backend.onrender.com'`
-   - Push → Vercel auto-redeploys
+1. Go to [render.com](https://render.com) → **New → Web Service**
+2. Connect `gaellehabib24/Infrared-Hackathon-WindSite` from GitHub
+3. Fill in:
+   - **Root Directory**: `backend`
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `uvicorn server:app --host 0.0.0.0 --port $PORT`
+   - **Instance Type**: Free
+4. Add environment variables:
+   - `INFRARED_API_KEY` — your Infrared API key
+   - `DATABASE_URL` — your Neon connection string
+5. Click **Deploy Web Service**. Takes ~2 min. Status turns green when live.
 
-> **Note on Render free tier**: the service sleeps after 15 minutes of inactivity and takes ~30 seconds to wake up on the next request. This is fine for demos. Upgrade to a paid Render plan to avoid cold starts.
+### Step 3 — Frontend on Vercel
+
+1. Go to [vercel.com](https://vercel.com) → **Add New Project**
+2. Import the same GitHub repo
+3. Set **Root Directory** to `frontend` (everything else stays default)
+4. Click **Deploy**. Done in ~30 seconds.
+
+> To point the frontend at a different backend, edit `frontend/config.js` and push — Vercel auto-redeploys.
+
+> **Render free tier**: sleeps after 15 min of inactivity. First request after idle takes ~30 seconds to wake up.
 
 ---
 
